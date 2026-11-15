@@ -9,7 +9,6 @@ use Modules\Events\app\Enum\EventType;
 use Modules\Events\app\Enum\EventVisibility;
 use Modules\Events\app\Models\Event;
 use Modules\Organizer\app\Enum\OrganizerMemberRole;
-use Modules\Organizer\app\Enum\OrganizerType;
 use Modules\Organizer\app\Models\Organizer;
 use Modules\Organizer\app\Models\OrganizerMember;
 use Modules\Tickets\app\Models\Ticket;
@@ -22,9 +21,7 @@ beforeEach(function () {
     $this->owner = User::factory()->create(['account_type' => 'organizer']);
     $this->organizer = Organizer::create([
         'user_id' => $this->owner->id,
-        'name' => 'African Summit Group',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'African Summit Group',    ]);
 
     $this->staffUser = User::factory()->create(['account_type' => 'organizer']);
     OrganizerMember::create([

@@ -93,8 +93,15 @@ class TicketService
      */
     public function getUserTickets(User $user, array $filters = []): LengthAwarePaginator|Collection
     {
-        $query = Ticket::with(['event.organizer', 'event.location', 'ticketType'])
-            ->where('user_id', $user->id)
+        $query = Ticket::with(['event.organizer', 'event.location', 'event.schedule', 'ticketType'])
+            ->where(function ($q) use ($user) {
+                $q->where('user_id', $user->id)
+                    ->orWhere('attendee_email', $user->email)
+                    ->orWhereHas('order', function ($oq) use ($user) {
+                        $oq->where('user_id', $user->id)
+                            ->orWhere('customer_email', $user->email);
+                    });
+            })
             ->latest();
 
         if (! empty($filters['status'])) {
@@ -103,8 +110,8 @@ class TicketService
 
         $perPage = $filters['perPage'] ?? $filters['per_page'] ?? null;
 
-        if ($perPage) {
-            return $query->paginate((int) $perPage);
+        if ($perPage !== null) {
+            return $query->paginate(min(max((int) $perPage, 1), 100));
         }
 
         return $query->get();
@@ -115,8 +122,15 @@ class TicketService
      */
     public function getUserTicket(User $user, string $ticketUuid): Ticket
     {
-        return Ticket::with(['event.organizer', 'event.location', 'ticketType'])
-            ->where('user_id', $user->id)
+        return Ticket::with(['event.organizer', 'event.location', 'event.schedule', 'ticketType'])
+            ->where(function ($q) use ($user) {
+                $q->where('user_id', $user->id)
+                    ->orWhere('attendee_email', $user->email)
+                    ->orWhereHas('order', function ($oq) use ($user) {
+                        $oq->where('user_id', $user->id)
+                            ->orWhere('customer_email', $user->email);
+                    });
+            })
             ->where('uuid', $ticketUuid)
             ->firstOrFail();
     }
@@ -140,6 +154,8 @@ class TicketService
                 'event_id' => $ticketType->event_id,
                 'user_id' => $user->id,
                 'ticket_type_id' => $ticketType->id,
+                'attendee_name' => $user->name,
+                'attendee_email' => $user->email,
                 'ticket_number' => 'TKT-'.strtoupper(Str::random(8)),
                 'price_paid' => $ticketType->price,
                 'currency' => $ticketType->currency,
@@ -149,7 +165,7 @@ class TicketService
 
             $ticketType->increment('sold_quantity');
 
-            return $ticket->load(['event.organizer', 'event.location', 'ticketType', 'user']);
+            return $ticket->load(['event.organizer', 'event.location', 'event.schedule', 'ticketType', 'user']);
         });
     }
 

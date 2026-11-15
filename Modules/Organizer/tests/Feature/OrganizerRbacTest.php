@@ -23,7 +23,6 @@ beforeEach(function () {
     $this->organizer = Organizer::create([
         'user_id' => $this->owner->id,
         'name' => 'Acme Organization',
-        'type' => 'organization',
     ]);
 });
 

@@ -1,6 +1,6 @@
 <?php
 
-namespace Modules\Credits\App\Providers;
+namespace Modules\Credits\app\Providers;
 
 use Illuminate\Console\Scheduling\Schedule;
 use Modules\Credits\app\Console\Commands\ReapExpiredReservationsCommand;

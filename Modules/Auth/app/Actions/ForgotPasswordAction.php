@@ -18,9 +18,11 @@ class ForgotPasswordAction
         $user = User::where('email', $email)->first();
 
         if ($user) {
-            if ($user->status !== UserStatus::ACTIVE) {
-                throw new UserNotActiveException($user->status);
+            if ($user->status !== UserStatus::ACTIVE || $user->isSuspended()) {
+                throw new UserNotActiveException($user->status ?? UserStatus::SUSPENDED);
             }
+
+            PasswordResetToken::where('user_id', $user->id)->delete();
 
             $rawToken = Str::random(60);
 
@@ -29,8 +31,6 @@ class ForgotPasswordAction
                 'token' => hash('sha256', $rawToken),
                 'expires_at' => now()->addMinutes(30),
             ];
-
-            PasswordResetToken::where('user_id', $user->id)->delete();
 
             PasswordResetToken::create($data);
 

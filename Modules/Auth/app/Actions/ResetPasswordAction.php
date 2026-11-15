@@ -37,8 +37,8 @@ class ResetPasswordAction
             throw new UserNotFoundException;
         }
 
-        if ($user->status !== UserStatus::ACTIVE) {
-            throw new UserNotActiveException($user->status);
+        if ($user->status !== UserStatus::ACTIVE || $user->isSuspended()) {
+            throw new UserNotActiveException($user->status ?? UserStatus::SUSPENDED);
         }
 
         $user->password = $dto->password;

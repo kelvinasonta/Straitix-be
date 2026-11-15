@@ -13,12 +13,14 @@ use Modules\Payments\app\Enums\OrderStatus;
 use Modules\Payments\app\Exceptions\OrderException;
 use Modules\Payments\app\Models\Order;
 use Modules\Payments\app\Models\OrderItem;
+use Modules\Shared\app\Contracts\AppSettingsServiceInterface;
 use Modules\Tickets\app\Models\TicketType;
 
 class OrderService
 {
     public function __construct(
-        protected PaymentService $paymentService
+        protected PaymentService $paymentService,
+        protected ?AppSettingsServiceInterface $settingsService = null,
     ) {}
 
     /**
@@ -41,6 +43,11 @@ class OrderService
 
         if (empty($itemsData)) {
             throw new OrderException('Order must contain at least one ticket item.');
+        }
+
+        $customerEmail = $customerData['customer_email'] ?? ($buyer?->email ?? null);
+        if (! $buyer && ! empty($customerEmail)) {
+            $buyer = User::where('email', strtolower(trim($customerEmail)))->first();
         }
 
         return DB::transaction(function () use ($buyer, $event, $itemsData, $customerData, $notes): Order {
@@ -89,16 +96,26 @@ class OrderService
             }
 
             $discount = 0.00;
+
+            // Calculate platform service fee dynamically from organizer plan / custom rate / app settings (if total subtotal > 0)
             $serviceFee = 0.00;
-            $total = max(0.00, $subtotal - $discount + $serviceFee);
+            if ($subtotal > 0.00) {
+                $totalTickets = (int) array_sum(array_column($preparedItems, 'quantity'));
+                $organizer = $event->relationLoaded('organizer')
+                    ? $event->organizer
+                    : Organizer::find($event->organizer_id);
+                $serviceFee = $this->calculatePlatformFee($subtotal, max(1, $totalTickets), $organizer);
+            }
+
+            // Check if fee is passed through to buyer or absorbed
+            $isPassthrough = $this->isFeePassthrough();
+            $total = $isPassthrough
+                ? max(0.00, round($subtotal - $discount + $serviceFee, 2))
+                : max(0.00, round($subtotal - $discount, 2));
 
             $customerName = $customerData['customer_name'] ?? ($buyer?->name ?? 'Guest Buyer');
-            $customerEmail = $customerData['customer_email'] ?? ($buyer?->email ?? null);
+            $customerEmail = $customerData['customer_email'] ?? ($buyer?->email ?? 'guest@reservation.hold');
             $customerPhone = $customerData['customer_phone'] ?? null;
-
-            if (empty($customerEmail)) {
-                throw new OrderException('Customer email is required for ticket delivery.');
-            }
 
             // Generate secure guest token for unauthenticated access & verification
             $guestToken = $buyer ? null : bin2hex(random_bytes(24));
@@ -149,7 +166,10 @@ class OrderService
     public function getOrder(string $orderUuid): Order
     {
         return Order::with(['items.ticketType', 'event.organizer', 'event.location', 'tickets.ticketType', 'payments'])
-            ->where('uuid', $orderUuid)
+            ->where(function ($query) use ($orderUuid) {
+                $query->where('uuid', $orderUuid)
+                    ->orWhere('order_number', $orderUuid);
+            })
             ->firstOrFail();
     }
 
@@ -159,14 +179,17 @@ class OrderService
     public function getUserOrders(User $user, array $filters = []): LengthAwarePaginator
     {
         $query = Order::with(['items.ticketType', 'event.location', 'tickets'])
-            ->where('user_id', $user->id)
+            ->where(function ($q) use ($user) {
+                $q->where('user_id', $user->id)
+                    ->orWhere('customer_email', $user->email);
+            })
             ->latest();
 
         if (! empty($filters['status'])) {
             $query->where('status', $filters['status']);
         }
 
-        $perPage = (int) ($filters['per_page'] ?? $filters['perPage'] ?? 15);
+        $perPage = min(max((int) ($filters['per_page'] ?? $filters['perPage'] ?? 15), 1), 100);
 
         return $query->paginate($perPage);
     }
@@ -198,7 +221,7 @@ class OrderService
             });
         }
 
-        $perPage = (int) ($filters['per_page'] ?? $filters['perPage'] ?? 15);
+        $perPage = min(max((int) ($filters['per_page'] ?? $filters['perPage'] ?? 15), 1), 100);
 
         return $query->paginate($perPage);
     }
@@ -263,6 +286,32 @@ class OrderService
     }
 
     /**
+     * Cancel an active pending order, releasing any held ticket reservations.
+     */
+    public function cancelOrder(Order $order): Order
+    {
+        if ($order->status !== OrderStatus::Pending) {
+            throw new OrderException('Only pending orders can be cancelled.');
+        }
+
+        return DB::transaction(function () use ($order): Order {
+            foreach ($order->items as $item) {
+                if ($item->ticketType) {
+                    $newReserved = max(0, $item->ticketType->reserved_quantity - $item->quantity);
+                    $item->ticketType->update(['reserved_quantity' => $newReserved]);
+                }
+            }
+
+            $order->update([
+                'status' => OrderStatus::Cancelled,
+                'cancelled_at' => now(),
+            ]);
+
+            return $order->fresh(['items.ticketType']);
+        });
+    }
+
+    /**
      * Cancel pending orders that have exceeded their reservation window.
      */
     public function cancelExpiredReservations(): int
@@ -293,5 +342,52 @@ class OrderService
         }
 
         return $count;
+    }
+
+    /**
+     * Compute platform service fee based on organizer tier/custom rate or global app settings.
+     */
+    protected function calculatePlatformFee(float $subtotal, int $ticketCount, ?Organizer $organizer = null): float
+    {
+        $settings = $this->getSettings();
+        $globalPercentage = $settings ? (float) $settings->platform_fee_percentage : 0.0;
+        $globalFixed = $settings ? (float) $settings->platform_fee_fixed : 0.0;
+
+        if ($organizer) {
+            $effective = $organizer->resolveEffectiveFeeRate($globalPercentage, $globalFixed);
+            $percentage = $effective['percentage'];
+            $fixed = $effective['fixed'];
+        } else {
+            if (! $settings) {
+                return 0.00;
+            }
+            $percentage = $globalPercentage;
+            $fixed = $globalFixed;
+        }
+
+        $percentageFee = ($subtotal * $percentage) / 100;
+        $totalFixedFee = $fixed * max(1, $ticketCount);
+
+        return round($percentageFee + $totalFixedFee, 2);
+    }
+
+    /**
+     * Check if the platform fee should be passed onto the ticket buyer.
+     */
+    protected function isFeePassthrough(): bool
+    {
+        $settings = $this->getSettings();
+
+        return $settings ? (bool) $settings->platform_fee_passthrough : true;
+    }
+
+    /**
+     * Helper to resolve app settings service.
+     */
+    protected function getSettings()
+    {
+        $service = $this->settingsService ?? app(AppSettingsServiceInterface::class);
+
+        return $service?->getAll();
     }
 }

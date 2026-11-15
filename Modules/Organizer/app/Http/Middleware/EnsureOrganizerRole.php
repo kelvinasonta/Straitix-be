@@ -42,12 +42,20 @@ class EnsureOrganizerRole
             $organizer = Organizer::with(['members'])
                 ->where('uuid', $organizerIdentifier)
                 ->orWhere('slug', $organizerIdentifier)
-                ->orWhere('id', $organizerIdentifier)
+                ->when(is_numeric($organizerIdentifier), fn ($query) => $query->orWhere('id', (int) $organizerIdentifier))
                 ->first();
         }
 
         if (! $organizer) {
             return ApiResponse::error('Organizer not found.', 404);
+        }
+
+        if ($organizer->isSuspended() && ! $user->isAdministrator()) {
+            return ApiResponse::error('This organization is currently suspended.', 403, 'ORGANIZER_SUSPENDED');
+        }
+
+        if ($user->isSuspended() && ! $user->isAdministrator()) {
+            return ApiResponse::error('Your account is currently suspended.', 403, 'USER_SUSPENDED');
         }
 
         $userRole = $organizer->getRoleForUser($user);

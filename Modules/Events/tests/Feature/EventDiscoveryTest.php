@@ -10,7 +10,6 @@ use Modules\Events\app\Models\Event;
 use Modules\Events\app\Models\EventLocation;
 use Modules\Events\app\Models\EventMetric;
 use Modules\Events\app\Models\EventSchedule;
-use Modules\Organizer\app\Enum\OrganizerType;
 use Modules\Organizer\app\Models\Organizer;
 use Modules\Tickets\app\Models\TicketType;
 use Tests\TestCase;
@@ -25,9 +24,7 @@ function createTestEvent(array $attributes = [], array $locationAttributes = [],
     $owner = User::factory()->create(['account_type' => 'organizer']);
     $organizer = $attributes['organizer'] ?? Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Organizer '.$counter,
-        'type' => OrganizerType::ORGANIZATION,
-        'is_verified' => true,
+        'name' => 'Organizer '.$counter,        'is_verified' => true,
     ]);
 
     $event = Event::create([
@@ -196,9 +193,7 @@ test('diversification caps an organizer to maximum 2 events in the top 10 positi
     $owner = User::factory()->create(['account_type' => 'organizer']);
     $prolificOrganizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Mega Promotions',
-        'type' => OrganizerType::ORGANIZATION,
-        'is_verified' => true,
+        'name' => 'Mega Promotions',        'is_verified' => true,
     ]);
 
     // Create 5 events for this single organizer

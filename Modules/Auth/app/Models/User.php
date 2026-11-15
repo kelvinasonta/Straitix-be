@@ -27,6 +27,8 @@ class User extends Authenticatable
         'first_name',
         'last_name',
         'email',
+        'google_id',
+        'avatar',
         'password',
         'status',
         'phone',
@@ -37,7 +39,11 @@ class User extends Authenticatable
         'last_login_at',
         'last_login_ip',
         'account_type',
-        'organizer_type',
+        'is_admin',
+        'admin_role',
+        'admin_permissions',
+        'suspended_at',
+        'suspension_reason',
     ];
 
     protected $hidden = [
@@ -71,11 +77,19 @@ class User extends Authenticatable
     }
 
     /**
+     * Determine if the user account is suspended.
+     */
+    public function isSuspended(): bool
+    {
+        return $this->suspended_at !== null || $this->status === UserStatus::SUSPENDED;
+    }
+
+    /**
      * Determine if the user is an active administrator.
      */
     public function isAdministrator(): bool
     {
-        return (bool) $this->is_admin && $this->status === UserStatus::ACTIVE && $this->suspended_at === null;
+        return (bool) $this->is_admin && $this->status === UserStatus::ACTIVE && ! $this->isSuspended();
     }
 
     /**
@@ -158,7 +172,7 @@ class User extends Authenticatable
                 ->where(function ($query) use ($organizerIdentifier) {
                     $query->where('uuid', $organizerIdentifier)
                         ->orWhere('slug', $organizerIdentifier)
-                        ->orWhere('id', $organizerIdentifier);
+                        ->when(is_numeric($organizerIdentifier), fn ($q) => $q->orWhere('id', (int) $organizerIdentifier));
                 })
                 ->first();
 
@@ -173,6 +187,7 @@ class User extends Authenticatable
         }
 
         $memberOrganizerId = OrganizerMember::where('user_id', $this->id)
+            ->whereHas('organizer')
             ->latest('updated_at')
             ->value('organizer_id');
 
@@ -181,5 +196,36 @@ class User extends Authenticatable
         }
 
         return null;
+    }
+
+    /**
+     * Determine whether the user currently owns or belongs to an active organization.
+     */
+    public function belongsToOrganization(?int $excludeOrganizerId = null): bool
+    {
+        $ownsActiveOrg = Organizer::where('user_id', $this->id)
+            ->when($excludeOrganizerId !== null, fn ($q) => $q->where('id', '!=', $excludeOrganizerId))
+            ->exists();
+
+        if ($ownsActiveOrg) {
+            return true;
+        }
+
+        return OrganizerMember::where('user_id', $this->id)
+            ->when($excludeOrganizerId !== null, fn ($q) => $q->where('organizer_id', '!=', $excludeOrganizerId))
+            ->whereHas('organizer')
+            ->exists();
+    }
+
+    /**
+     * Synchronize the user's account_type ('organizer' vs 'customer') based on active organization membership.
+     */
+    public function syncAccountTypeWithOrganizations(): void
+    {
+        $expectedType = $this->belongsToOrganization() ? 'organizer' : 'customer';
+
+        if ($this->account_type !== $expectedType) {
+            $this->update(['account_type' => $expectedType]);
+        }
     }
 }

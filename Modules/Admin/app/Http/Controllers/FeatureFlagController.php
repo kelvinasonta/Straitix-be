@@ -9,12 +9,28 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Laravel\Pennant\Feature;
 use Modules\Audit\app\Services\AuditService;
+use Modules\Shared\app\Services\FeatureFlagService;
 
 class FeatureFlagController extends Controller
 {
     public function __construct(
-        protected AuditService $auditService
+        protected AuditService $auditService,
+        protected FeatureFlagService $featureFlagService
     ) {}
+
+    /**
+     * List all system feature flags with metadata and live status.
+     */
+    public function index(): JsonResponse
+    {
+        $features = $this->featureFlagService->getAllFeatures();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Feature flags retrieved successfully.',
+            'data' => $features,
+        ]);
+    }
 
     /**
      * Toggle a feature flag.
@@ -32,6 +48,9 @@ class FeatureFlagController extends Controller
         } else {
             Feature::for('global')->deactivate($feature);
         }
+
+        // Invalidate global persistent cache
+        $this->featureFlagService->clearCache();
 
         $this->auditService->log(
             action: 'feature_flag.toggled',

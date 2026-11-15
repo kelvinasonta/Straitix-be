@@ -69,7 +69,6 @@ class OrganizerResource extends JsonResource
             'email' => $this->email,
             'phone' => $this->phone,
             'website' => $this->website,
-            'type' => $this->type instanceof BackedEnum ? $this->type->value : $this->type,
             'verification_status' => $verificationStatus,
             'is_verified' => $verificationStatus === 'verified',
             'verified_at' => $verifiedAtStr,

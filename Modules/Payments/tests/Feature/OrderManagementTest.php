@@ -8,9 +8,12 @@ use Modules\Events\app\Enum\EventStatus;
 use Modules\Events\app\Enum\EventType;
 use Modules\Events\app\Enum\EventVisibility;
 use Modules\Events\app\Models\Event;
-use Modules\Organizer\app\Enum\OrganizerType;
 use Modules\Organizer\app\Models\Organizer;
+use Modules\Payments\app\Enums\OrderStatus;
 use Modules\Payments\app\Models\Order;
+use Modules\Payments\app\Models\Payment;
+use Modules\Payments\app\Services\PaymentService;
+use Modules\Tickets\app\Models\Ticket;
 use Modules\Tickets\app\Models\TicketType;
 use Tests\TestCase;
 
@@ -20,9 +23,7 @@ beforeEach(function () {
     $this->owner = User::factory()->create(['account_type' => 'organizer']);
     $this->organizer = Organizer::create([
         'user_id' => $this->owner->id,
-        'name' => 'Tech Events Africa',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Tech Events Africa',    ]);
 
     $this->customer = User::factory()->create(['account_type' => 'customer']);
 
@@ -346,4 +347,76 @@ test('unauthenticated guest can reserve free tickets directly', function () {
         'attendee_email' => 'freeguest@example.com',
         'status' => 'valid',
     ]);
+});
+
+test('concurrent or repeated fulfillOrder and verifyPayment calls are idempotent and prevent duplicate tickets', function () {
+    // 1. Create order for 2 VIP tickets
+    $orderRes = $this->actingAs($this->customer)
+        ->postJson("/api/v1/events/{$this->event->uuid}/orders", [
+            'items' => [
+                [
+                    'ticket_type_uuid' => $this->vipTicket->uuid,
+                    'quantity' => 2,
+                    'attendee_name' => 'Concurrent Customer',
+                    'attendee_email' => 'concurrent@example.com',
+                ],
+            ],
+        ]);
+
+    $orderUuid = $orderRes->json('data.id');
+    $order = Order::where('uuid', $orderUuid)->firstOrFail();
+
+    // 2. Initialize payment
+    $initRes = $this->actingAs($this->customer)
+        ->postJson("/api/v1/orders/{$orderUuid}/payments", [
+            'gateway' => 'paystack',
+        ]);
+
+    $reference = $initRes->json('data.reference');
+    $payment = Payment::where('reference', $reference)->firstOrFail();
+
+    /** @var PaymentService $paymentService */
+    $paymentService = app(PaymentService::class);
+
+    // Simulate parallel execution: verifyPayment (e.g. from user redirect) and fulfillOrder (e.g. from webhook)
+    $fulfilledOrder1 = $paymentService->fulfillOrder($order, $payment, ['source' => 'webhook']);
+    $fulfilledOrder2 = $paymentService->verifyPayment($reference, ['source' => 'browser']);
+    $fulfilledOrder3 = $paymentService->fulfillOrder($order, $payment, ['source' => 'webhook_retry']);
+
+    // Order status must be paid
+    expect($fulfilledOrder1->status)->toBe(OrderStatus::Paid)
+        ->and($fulfilledOrder2->status)->toBe(OrderStatus::Paid)
+        ->and($fulfilledOrder3->status)->toBe(OrderStatus::Paid);
+
+    // Exactly 2 tickets must exist for this order, never duplicated
+    $tickets = Ticket::where('order_id', $order->id)->get();
+    expect($tickets)->toHaveCount(2);
+
+    // Ticket inventory check: sold_quantity increased by 2 exactly once
+    expect($this->vipTicket->fresh()->sold_quantity)->toBe(2);
+    expect($this->vipTicket->fresh()->reserved_quantity)->toBe(0);
+});
+
+test('pending order can be cancelled and held ticket reservation is released', function () {
+    $orderRes = $this->actingAs($this->customer)
+        ->postJson("/api/v1/events/{$this->event->uuid}/orders", [
+            'items' => [
+                [
+                    'ticket_type_uuid' => $this->vipTicket->uuid,
+                    'quantity' => 2,
+                ],
+            ],
+        ]);
+
+    $orderUuid = $orderRes->json('data.id');
+    expect($this->vipTicket->fresh()->reserved_quantity)->toBe(2);
+
+    $cancelRes = $this->actingAs($this->customer)
+        ->postJson("/api/v1/orders/{$orderUuid}/cancel");
+
+    $cancelRes->assertStatus(200)
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('data.status', 'cancelled');
+
+    expect($this->vipTicket->fresh()->reserved_quantity)->toBe(0);
 });

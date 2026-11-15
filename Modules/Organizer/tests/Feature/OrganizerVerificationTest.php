@@ -3,7 +3,6 @@
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Auth\app\Models\User;
 use Modules\Organizer\app\Enum\OrganizerMemberRole;
-use Modules\Organizer\app\Enum\OrganizerType;
 use Modules\Organizer\app\Enum\OrganizerVerificationStatus;
 use Modules\Organizer\app\Models\Organizer;
 use Modules\Organizer\app\Models\OrganizerMember;
@@ -17,9 +16,7 @@ function createTestOrganizerForVerification(): array
     $owner = User::factory()->create(['account_type' => 'organizer']);
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Apex Event Group Ltd',
-        'type' => OrganizerType::ORGANIZATION,
-        'verification_status' => OrganizerVerificationStatus::UNVERIFIED,
+        'name' => 'Apex Event Group Ltd',        'verification_status' => OrganizerVerificationStatus::UNVERIFIED,
     ]);
 
     return [$owner, $organizer];
@@ -44,12 +41,12 @@ test('organizer owner can request verification with valid business details and d
             [
                 'type' => 'cac_certificate',
                 'name' => 'CAC Registration Certificate',
-                'url' => 'https://storage.eventsos.ng/documents/cac_apex.pdf',
+                'url' => 'https://storage.strayttix.ng/documents/cac_apex.pdf',
             ],
             [
                 'type' => 'tax_clearance',
                 'name' => 'Tax Clearance Certificate',
-                'url' => 'https://storage.eventsos.ng/documents/tax_apex.pdf',
+                'url' => 'https://storage.strayttix.ng/documents/tax_apex.pdf',
             ],
         ],
     ];
@@ -94,7 +91,7 @@ test('organizer admin can also request verification', function () {
         'documents' => [
             [
                 'type' => 'cac_certificate',
-                'url' => 'https://storage.eventsos.ng/documents/cac_apex.pdf',
+                'url' => 'https://storage.strayttix.ng/documents/cac_apex.pdf',
             ],
         ],
     ];
@@ -131,7 +128,7 @@ test('staff role cannot submit verification request', function () {
         'documents' => [
             [
                 'type' => 'cac_certificate',
-                'url' => 'https://storage.eventsos.ng/documents/cac_apex.pdf',
+                'url' => 'https://storage.strayttix.ng/documents/cac_apex.pdf',
             ],
         ],
     ];
@@ -165,7 +162,7 @@ test('cannot submit verification request if one is already pending review', func
             'documents' => [
                 [
                     'type' => 'cac_certificate',
-                    'url' => 'https://storage.eventsos.ng/documents/cac_apex.pdf',
+                    'url' => 'https://storage.strayttix.ng/documents/cac_apex.pdf',
                 ],
             ],
         ]
@@ -191,7 +188,7 @@ test('cannot submit verification request if organization is already verified', f
             'documents' => [
                 [
                     'type' => 'cac_certificate',
-                    'url' => 'https://storage.eventsos.ng/documents/cac_apex.pdf',
+                    'url' => 'https://storage.strayttix.ng/documents/cac_apex.pdf',
                 ],
             ],
         ]

@@ -8,7 +8,6 @@ use Modules\Events\app\Enum\EventVisibility;
 use Modules\Events\app\Models\Event;
 use Modules\Events\app\Models\EventStaff;
 use Modules\Organizer\app\Enum\OrganizerMemberRole;
-use Modules\Organizer\app\Enum\OrganizerType;
 use Modules\Organizer\app\Models\Organizer;
 use Modules\Organizer\app\Models\OrganizerMember;
 use Tests\TestCase;
@@ -20,9 +19,7 @@ function createTestOrganizerAndEvent(): array
     $owner = User::factory()->create(['account_type' => 'organizer']);
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Event Horizon Ltd',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Event Horizon Ltd',    ]);
 
     $event = Event::create([
         'organizer_id' => $organizer->id,

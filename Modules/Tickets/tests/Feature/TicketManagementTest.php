@@ -6,7 +6,6 @@ use Modules\Events\app\Enum\EventStatus;
 use Modules\Events\app\Enum\EventType;
 use Modules\Events\app\Enum\EventVisibility;
 use Modules\Events\app\Models\Event;
-use Modules\Organizer\app\Enum\OrganizerType;
 use Modules\Organizer\app\Models\Organizer;
 use Modules\Tickets\app\Models\Ticket;
 use Modules\Tickets\app\Models\TicketType;
@@ -18,9 +17,7 @@ beforeEach(function () {
     $this->owner = User::factory()->create(['account_type' => 'organizer']);
     $this->organizer = Organizer::create([
         'user_id' => $this->owner->id,
-        'name' => 'African Tech Network',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'African Tech Network',    ]);
 
     $this->user = User::factory()->create(['account_type' => 'customer']);
 
@@ -273,4 +270,82 @@ test('user can view single ticket details', function () {
         ->assertJsonPath('success', true)
         ->assertJsonPath('data.id', $ticket->uuid)
         ->assertJsonPath('data.status', 'valid');
+});
+
+test('user can view tickets purchased via order checkout matching their email', function () {
+    $ticketType = TicketType::create([
+        'event_id' => $this->event->id,
+        'name' => 'Checkout Ticket',
+        'type' => 'paid',
+        'price' => 5000.00,
+        'currency' => 'NGN',
+        'quantity' => 10,
+        'status' => 'active',
+    ]);
+
+    // Create an order via POST /api/v1/events/{eventUuid}/orders as authenticated customer
+    $orderResponse = $this->actingAs($this->user, 'sanctum')
+        ->postJson("/api/v1/events/{$this->event->uuid}/orders", [
+            'items' => [
+                [
+                    'ticket_type_uuid' => $ticketType->uuid,
+                    'quantity' => 2,
+                    'attendee_name' => $this->user->name,
+                    'attendee_email' => $this->user->email,
+                ],
+            ],
+            'customer_name' => $this->user->name,
+            'customer_email' => $this->user->email,
+        ]);
+
+    $orderResponse->assertCreated()
+        ->assertJsonPath('data.customerEmail', $this->user->email);
+
+    $orderId = $orderResponse->json('data.id');
+    $orderModel = \Modules\Payments\app\Models\Order::where('uuid', $orderId)->firstOrFail();
+    expect($orderModel->user_id)->toBe($this->user->id);
+
+    // Fulfill the order
+    app(\Modules\Payments\app\Services\PaymentService::class)->fulfillFreeOrder($orderModel);
+
+    // Check that GET /api/v1/tickets returns the 2 tickets
+    $ticketsResponse = $this->actingAs($this->user, 'sanctum')
+        ->getJson('/api/v1/tickets');
+
+    $ticketsResponse->assertSuccessful();
+    $data = $ticketsResponse->json('data');
+    expect($data)->toHaveCount(2)
+        ->and($data[0]['attendeeEmail'])->toBe($this->user->email)
+        ->and($data[0]['event']['title'])->toBe($this->event->title);
+});
+
+test('tickets with null user_id matching user email or order customer email are returned', function () {
+    $ticketType = TicketType::create([
+        'event_id' => $this->event->id,
+        'name' => 'Guest Ticket',
+        'type' => 'free',
+        'price' => 0.00,
+        'currency' => 'NGN',
+        'status' => 'active',
+    ]);
+
+    // Create a ticket with user_id = null but attendee_email = user's email
+    $ticket = Ticket::create([
+        'event_id' => $this->event->id,
+        'user_id' => null,
+        'attendee_email' => $this->user->email,
+        'attendee_name' => $this->user->name,
+        'ticket_type_id' => $ticketType->id,
+        'price_paid' => 0.00,
+        'currency' => 'NGN',
+        'status' => 'valid',
+    ]);
+
+    $response = $this->actingAs($this->user, 'sanctum')
+        ->getJson('/api/v1/tickets');
+
+    $response->assertSuccessful();
+    $data = $response->json('data');
+    expect($data)->toHaveCount(1)
+        ->and($data[0]['id'])->toBe($ticket->uuid);
 });

@@ -6,8 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Modules\Audit\app\Services\AuditService;
 use Modules\Auth\app\Models\User;
+use Modules\Events\app\Models\EventCollaborator;
 use Modules\Organizer\app\Enum\OrganizerMemberRole;
 use Modules\Organizer\app\Enum\OrganizerPermission;
 use Modules\Organizer\app\Http\Requests\StoreOrganizerMemberRequest;
@@ -84,8 +86,31 @@ class OrganizerMemberController extends Controller
             ->where('user_id', $userToAdd->id)
             ->first();
 
-        if ($existing) {
-            return ApiResponse::error('User is already a member of this organizer.', 422);
+        if ($existing || $organizer->user_id === $userToAdd->id) {
+            return ApiResponse::error('User is already a member of this organizer.', 422, 'USER_ALREADY_ORGANIZER_MEMBER');
+        }
+
+        if ($userToAdd->belongsToOrganization($organizer->id)) {
+            return ApiResponse::error(
+                'This user already belongs to another organization. A user can only belong to one organization at a time.',
+                422,
+                'USER_ALREADY_IN_ORGANIZATION'
+            );
+        }
+
+        $currentStaffCount = OrganizerMember::where('organizer_id', $organizer->id)
+            ->where('user_id', '!=', $organizer->user_id)
+            ->count();
+        $maxStaff = $organizer->maxAllowedStaffMembers();
+
+        if ($currentStaffCount >= $maxStaff) {
+            $tierLabel = $organizer->effectivePlanTier()->label();
+
+            return ApiResponse::error(
+                "Your {$tierLabel} plan allows up to {$maxStaff} staff member(s). Upgrade your subscription plan to add more team members.",
+                422,
+                'PLAN_LIMIT_EXCEEDED'
+            );
         }
 
         if ($userToAdd->account_type !== 'organizer') {
@@ -221,8 +246,17 @@ class OrganizerMemberController extends Controller
         $memberName = $member->user?->name ?? 'Unknown';
         $memberUserId = $member->user_id;
         $memberId = $member->id;
+        $memberUser = $member->user;
 
-        $member->delete();
+        DB::transaction(function () use ($member, $memberUser, $memberUserId, $organizer) {
+            $member->delete();
+
+            EventCollaborator::where('user_id', $memberUserId)
+                ->whereHas('event', fn ($q) => $q->where('organizer_id', $organizer->id))
+                ->delete();
+
+            $memberUser?->syncAccountTypeWithOrganizations();
+        });
 
         $this->auditService->log(
             action: 'member.removed',

@@ -16,6 +16,7 @@ use Modules\Organizer\app\Exceptions\OrganizerInvitationAlreadyAcceptedException
 use Modules\Organizer\app\Exceptions\OrganizerInvitationFailedException;
 use Modules\Organizer\app\Exceptions\OrganizerInvitationNotFoundException;
 use Modules\Organizer\app\Exceptions\OrganizerInvitationUnauthorizedException;
+use Modules\Organizer\app\Exceptions\PlanLimitExceededException;
 use Modules\Organizer\app\Exceptions\UserAlreadyOrganizerMemberException;
 use Modules\Organizer\app\Models\Organizer;
 use Modules\Organizer\app\Models\OrganizerInvitation;
@@ -32,6 +33,7 @@ class OrganizerInvitationService extends BaseCacheManager
      */
     public function getAllInvitations(Organizer $organizer, int $perPage = 10): LengthAwarePaginator
     {
+        $perPage = min(max($perPage, 1), 100);
         $page = (int) request()->get('page', 1);
         $cacheKey = "organizer:{$organizer->id}:invitations:page:{$page}:limit:{$perPage}";
         $tags = $this->getCacheTags($organizer);
@@ -149,16 +151,51 @@ class OrganizerInvitationService extends BaseCacheManager
 
         $email = strtolower(trim($email));
 
-        // Check if user is already a member
+        // Check if organizer plan capacity allows more staff members / pending invites
+        $currentStaffCount = OrganizerMember::where('organizer_id', $organizer->id)
+            ->where('user_id', '!=', $organizer->user_id)
+            ->count();
+
+        // Also check if this email already has a pending invitation
+        $existingInvitation = OrganizerInvitation::where('organizer_id', $organizer->id)
+            ->where('email', $email)
+            ->whereNull('accepted_at')
+            ->first();
+
+        // Pending invitations for other emails that haven't been accepted yet also reserve a slot
+        $pendingInvitesCount = OrganizerInvitation::where('organizer_id', $organizer->id)
+            ->whereNull('accepted_at')
+            ->where('email', '!=', $email)
+            ->where('expires_at', '>', now())
+            ->count();
+
+        $maxStaff = $organizer->maxAllowedStaffMembers();
+        if (($currentStaffCount + $pendingInvitesCount) >= $maxStaff && ! $existingInvitation) {
+            $tierLabel = $organizer->effectivePlanTier()->label();
+            throw new PlanLimitExceededException(
+                "Your {$tierLabel} plan allows up to {$maxStaff} staff member(s). Upgrade your subscription plan to invite more team members."
+            );
+        }
+
+        // Check if user is already a member or belongs to another organization
         $existingUser = User::where('email', $email)->first();
 
         if ($existingUser) {
-            $isAlreadyMember = OrganizerMember::where('organizer_id', $organizer->id)
-                ->where('user_id', $existingUser->id)
-                ->exists();
+            $isAlreadyMember = $organizer->user_id === $existingUser->id
+                || OrganizerMember::where('organizer_id', $organizer->id)
+                    ->where('user_id', $existingUser->id)
+                    ->exists();
 
             if ($isAlreadyMember) {
                 throw new UserAlreadyOrganizerMemberException;
+            }
+
+            if ($existingUser->belongsToOrganization($organizer->id)) {
+                throw new UserAlreadyOrganizerMemberException(
+                    message: 'This user already belongs to another organization. A user can only belong to one organization at a time.',
+                    status: 422,
+                    errorCode: 'USER_ALREADY_IN_ORGANIZATION',
+                );
             }
         }
 

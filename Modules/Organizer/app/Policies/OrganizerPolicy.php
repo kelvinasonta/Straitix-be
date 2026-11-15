@@ -12,6 +12,22 @@ use Modules\Organizer\app\Models\Organizer;
 class OrganizerPolicy
 {
     /**
+     * Pre-authorization checks.
+     */
+    public function before(User $user, string $ability, Organizer $organizer): ?bool
+    {
+        if ($user->isAdministrator()) {
+            return true;
+        }
+
+        if ($user->isSuspended() || $organizer->isSuspended()) {
+            return false;
+        }
+
+        return null;
+    }
+
+    /**
      * Resolve the member role of the given user in the organization.
      */
     public function getMemberRole(User $user, Organizer $organizer): ?OrganizerMemberRole
