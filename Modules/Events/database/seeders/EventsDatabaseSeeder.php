@@ -9,7 +9,6 @@ use Modules\Events\app\Enum\EventStatus;
 use Modules\Events\app\Enum\EventType;
 use Modules\Events\app\Enum\EventVisibility;
 use Modules\Events\app\Models\Event;
-use Modules\Organizer\app\Enum\OrganizerType;
 use Modules\Organizer\app\Models\Organizer;
 use Modules\Tickets\app\Models\TicketType;
 
@@ -35,9 +34,7 @@ class EventsDatabaseSeeder extends Seeder
             $organizer = Organizer::create([
                 'user_id' => $user->id,
                 'name' => 'Prime Events Ltd',
-                'slug' => 'prime-events-ltd',
-                'type' => OrganizerType::ORGANIZATION,
-                'description' => 'Leading event organizers for global tech and creative summits.',
+                'slug' => 'prime-events-ltd',                'description' => 'Leading event organizers for global tech and creative summits.',
             ]);
         }
 

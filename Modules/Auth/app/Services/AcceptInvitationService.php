@@ -18,7 +18,7 @@ class AcceptInvitationService
             })
             ->first();
 
-        if (! $invitation || ! $invitation->isPending()) {
+        if (! $invitation || ! $invitation->isPending() || $invitation->organizer?->isSuspended()) {
             throw new InvitationTokenInvalid;
         }
 

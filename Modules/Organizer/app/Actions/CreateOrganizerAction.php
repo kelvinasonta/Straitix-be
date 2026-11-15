@@ -20,7 +20,6 @@ class CreateOrganizerAction
         $organizer = Organizer::create([
             'user_id' => $user->id,
             'name' => $organizerName,
-            'type' => $registerDto->organizerType,
             'slug' => Str::slug($organizerName),
             'email' => $user->email,
         ]);

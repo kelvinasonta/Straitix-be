@@ -19,7 +19,6 @@ it('can register a new user', function () {
         'phone' => '+1234567890',
         'timezone' => 'America/New_York',
         'account_type' => 'organizer',
-        'organizer_type' => 'individual',
         'password' => 'Password123!',
         'password_confirmation' => 'Password123!',
     ]);
@@ -35,7 +34,6 @@ it('can register a new user', function () {
 
     $this->assertDatabaseHas('organizers', [
         'email' => 'john@example.com',
-        'type' => 'individual',
     ]);
 
     Event::assertDispatched(UserRegisteredEvent::class);
@@ -70,7 +68,7 @@ it('cannot register with weak password', function () {
         ->assertJsonValidationErrors(['password']);
 });
 
-it('can register as an organization with a custom organization name', function () {
+it('can register as an organizer with a custom organization name', function () {
     Event::fake([UserRegisteredEvent::class]);
 
     $response = $this->postJson('/api/v1/auth/register', [
@@ -78,18 +76,15 @@ it('can register as an organization with a custom organization name', function (
         'last_name' => 'Smith',
         'email' => 'jane@acmeevents.com',
         'account_type' => 'organizer',
-        'organizer_type' => 'organization',
         'organization_name' => 'Acme Global Events Ltd',
         'password' => 'Password123!',
         'password_confirmation' => 'Password123!',
     ]);
 
     $response->assertStatus(201)
-        ->assertJsonPath('data.organizer.name', 'Acme Global Events Ltd')
-        ->assertJsonPath('data.organizer.type', 'organization');
+        ->assertJsonPath('data.organizer.name', 'Acme Global Events Ltd');
 
     $this->assertDatabaseHas('organizers', [
         'name' => 'Acme Global Events Ltd',
-        'type' => 'organization',
     ]);
 });

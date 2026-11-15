@@ -91,3 +91,19 @@ def test_negative_payload_validation_and_no_leak(base_url, user_a_session, metho
             f"in response body: {response.text[:300]}"
         )
 
+
+def test_cors_origin_reflection_blocked_for_malicious_domains(base_url):
+    """
+    Assert that unwhitelisted cross-origin requests do not receive
+    Access-Control-Allow-Origin or Access-Control-Allow-Credentials headers.
+    """
+    import requests
+    headers = {
+        "Origin": "https://evil-attacker.com",
+        "Access-Control-Request-Method": "GET",
+    }
+    res = requests.options(f"{base_url}/auth/me", headers=headers)
+    assert res.headers.get("Access-Control-Allow-Origin") is None, (
+        f"CORS Vulnerability: Arbitrary origin reflected in Access-Control-Allow-Origin!"
+    )
+    assert res.headers.get("Access-Control-Allow-Credentials") is None

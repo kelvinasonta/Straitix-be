@@ -3,7 +3,6 @@
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Auth\app\Models\User;
 use Modules\Organizer\app\Enum\OrganizerMemberRole;
-use Modules\Organizer\app\Enum\OrganizerType;
 use Modules\Organizer\app\Models\Organizer;
 use Modules\Organizer\app\Models\OrganizerMember;
 use Tests\TestCase;
@@ -14,9 +13,7 @@ test('me endpoint returns organizer details and role for primary owner', functio
     $owner = User::factory()->create(['account_type' => 'organizer']);
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Owner Events',
-        'type' => OrganizerType::INDIVIDUAL,
-    ]);
+        'name' => 'Owner Events',    ]);
 
     $response = $this->actingAs($owner, 'sanctum')->getJson('/api/v1/auth/me');
 
@@ -33,9 +30,7 @@ test('me endpoint returns organizer details and staff role for staff member', fu
 
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Team Events Ltd',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Team Events Ltd',    ]);
 
     OrganizerMember::create([
         'organizer_id' => $organizer->id,

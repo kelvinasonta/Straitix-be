@@ -8,7 +8,6 @@ use Modules\Events\app\Enum\EventStatus;
 use Modules\Events\app\Enum\EventType;
 use Modules\Events\app\Enum\EventVisibility;
 use Modules\Events\app\Models\Event;
-use Modules\Organizer\app\Enum\OrganizerType;
 use Modules\Organizer\app\Models\Organizer;
 use Modules\Payments\app\Services\OrderService;
 use Modules\Shared\app\Contracts\AppSettingsServiceInterface;
@@ -35,9 +34,7 @@ it('calculates platform service fee dynamically from app settings', function () 
     $owner = User::factory()->create(['account_type' => 'organizer']);
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Tech Events Africa',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Tech Events Africa',    ]);
 
     $event = Event::create([
         'organizer_id' => $organizer->id,
@@ -103,9 +100,7 @@ it('admin can change platform fee and immediate next order uses updated fee', fu
     $owner = User::factory()->create(['account_type' => 'organizer']);
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Tech Events Africa',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Tech Events Africa',    ]);
 
     $event = Event::create([
         'organizer_id' => $organizer->id,

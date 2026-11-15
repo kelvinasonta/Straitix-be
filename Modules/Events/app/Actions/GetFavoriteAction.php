@@ -46,8 +46,8 @@ class GetFavoriteAction
 
         $perPage = $filters['perPage'] ?? $filters['per_page'] ?? null;
 
-        if ($perPage) {
-            return $query->paginate((int) $perPage);
+        if ($perPage !== null) {
+            return $query->paginate(min(max((int) $perPage, 1), 100));
         }
 
         return $query->get();

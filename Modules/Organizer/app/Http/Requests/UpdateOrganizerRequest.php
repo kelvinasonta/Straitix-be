@@ -3,8 +3,6 @@
 namespace Modules\Organizer\app\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rules\Enum;
-use Modules\Organizer\app\Enum\OrganizerType;
 
 class UpdateOrganizerRequest extends FormRequest
 {
@@ -17,7 +15,6 @@ class UpdateOrganizerRequest extends FormRequest
     {
         return [
             'name' => ['sometimes', 'required', 'string', 'max:255'],
-            'type' => ['sometimes', 'required', new Enum(OrganizerType::class)],
             'description' => ['nullable', 'string'],
             'bio' => ['nullable', 'string'],
             'logo' => ['nullable', 'string', 'max:1000'],

@@ -19,6 +19,20 @@ class FeatureFlagController extends Controller
     ) {}
 
     /**
+     * List all system feature flags with metadata and live status.
+     */
+    public function index(): JsonResponse
+    {
+        $features = $this->featureFlagService->getAllFeatures();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Feature flags retrieved successfully.',
+            'data' => $features,
+        ]);
+    }
+
+    /**
      * Toggle a feature flag.
      */
     public function toggle(Request $request, string $feature): JsonResponse

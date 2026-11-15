@@ -5,7 +5,6 @@ use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Event;
 use Modules\Auth\app\Models\User;
 use Modules\Organizer\app\Enum\OrganizerMemberRole;
-use Modules\Organizer\app\Enum\OrganizerType;
 use Modules\Organizer\app\Events\OrganizerInvitationCreatedEvent;
 use Modules\Organizer\app\Models\Organizer;
 use Modules\Organizer\app\Models\OrganizerInvitation;
@@ -19,9 +18,7 @@ test('organizer owner can create an invitation for new staff', function () {
     $owner = User::factory()->create();
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Invite Org',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Invite Org',    ]);
 
     $response = $this->actingAs($owner, 'sanctum')->postJson("/api/v1/organizers/{$organizer->uuid}/invitations", [
         'email' => 'newstaff@example.com',
@@ -39,9 +36,7 @@ test('new user can accept invitation and join team', function () {
     $owner = User::factory()->create();
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Join Org',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Join Org',    ]);
 
     $invitation = OrganizerInvitation::create([
         'organizer_id' => $organizer->id,
@@ -76,9 +71,7 @@ test('owner can revoke invitation', function () {
     $owner = User::factory()->create();
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Revoke Org',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Revoke Org',    ]);
 
     $invitation = OrganizerInvitation::create([
         'organizer_id' => $organizer->id,
@@ -99,9 +92,7 @@ test('invitations are cached and cache is cleared on creation and revocation', f
     $owner = User::factory()->create();
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Cache Org',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Cache Org',    ]);
 
     $service->createInvitation(
         $organizer,
@@ -147,9 +138,7 @@ test('invitations can be cached and retrieved using file cache driver with seria
     $owner = User::factory()->create();
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'File Cache Org',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'File Cache Org',    ]);
 
     $service->createInvitation(
         $organizer,
@@ -184,9 +173,7 @@ test('organizer invitation created event is dispatched with correct payload', fu
     $owner = User::factory()->create();
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Event Org',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Event Org',    ]);
 
     $service->createInvitation(
         $organizer,
@@ -212,9 +199,7 @@ test('owner can resend an invitation and dispatches new invitation event', funct
     $owner = User::factory()->create();
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Resend Org',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Resend Org',    ]);
 
     $oldExpiry = now()->addDay();
     $invitation = OrganizerInvitation::create([
@@ -253,9 +238,7 @@ test('cannot resend an already accepted invitation', function () {
     $owner = User::factory()->create();
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Resend Org',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Resend Org',    ]);
 
     $invitation = OrganizerInvitation::create([
         'organizer_id' => $organizer->id,
@@ -277,9 +260,7 @@ test('cannot revoke an already accepted invitation', function () {
     $owner = User::factory()->create();
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Revoke Org',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Revoke Org',    ]);
 
     $invitation = OrganizerInvitation::create([
         'organizer_id' => $organizer->id,

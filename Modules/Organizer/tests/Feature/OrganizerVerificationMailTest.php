@@ -6,7 +6,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event as EventFacade;
 use Modules\Auth\app\Models\User;
 use Modules\Notification\app\Services\MailerService;
-use Modules\Organizer\app\Enum\OrganizerType;
 use Modules\Organizer\app\Enum\OrganizerVerificationStatus;
 use Modules\Organizer\app\Events\OrganizerVerificationReviewedEvent;
 use Modules\Organizer\app\Models\Organizer;
@@ -28,9 +27,7 @@ it('dispatches OrganizerVerificationReviewedEvent on approval and rejection', fu
     $owner = User::factory()->create(['account_type' => 'organizer']);
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Acme Live Events',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Acme Live Events',    ]);
 
     $verification = OrganizerVerification::create([
         'organizer_id' => $organizer->id,
@@ -73,9 +70,7 @@ it('sends approval email to organizer', function () {
     $organizer = Organizer::create([
         'user_id' => $user->id,
         'email' => 'founder@acme.com',
-        'name' => 'Acme Entertainment',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Acme Entertainment',    ]);
 
     $verification = OrganizerVerification::create([
         'organizer_id' => $organizer->id,
@@ -109,9 +104,7 @@ it('sends rejection email with reason to organizer', function () {
     $organizer = Organizer::create([
         'user_id' => $user->id,
         'email' => 'founder@acme.com',
-        'name' => 'Acme Entertainment',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Acme Entertainment',    ]);
 
     $verification = OrganizerVerification::create([
         'organizer_id' => $organizer->id,

@@ -17,6 +17,7 @@ RUN composer install \
     --no-dev \
     --no-interaction \
     --prefer-dist \
+    --no-scripts \
     --optimize-autoloader \
     --ignore-platform-req=ext-redis
 

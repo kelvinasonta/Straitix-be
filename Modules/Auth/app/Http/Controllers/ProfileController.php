@@ -24,6 +24,10 @@ class ProfileController extends Controller
     {
         $user = $request->user();
 
+        if ($user->isSuspended()) {
+            return ApiResponse::error('Your account is currently suspended.', 403, 'USER_SUSPENDED');
+        }
+
         $profileUpdateDTO = ProfileUpdateDTO::fromArray($request->validated());
 
         $this->profileService->profileUpdate($user, $profileUpdateDTO);
@@ -38,6 +42,10 @@ class ProfileController extends Controller
     {
         $user = $request->user();
 
+        if ($user->isSuspended()) {
+            return ApiResponse::error('Your account is currently suspended.', 403, 'USER_SUSPENDED');
+        }
+
         $passwordUpdateDTO = PasswordUpdateDTO::fromArray($request->validated());
 
         $this->profileService->passwordUpdate($user, $passwordUpdateDTO);
@@ -48,6 +56,10 @@ class ProfileController extends Controller
     public function destroy(Request $request)
     {
         $user = $request->user();
+
+        if ($user->isSuspended()) {
+            return ApiResponse::error('Your account is currently suspended.', 403, 'USER_SUSPENDED');
+        }
 
         $this->auditService->log(
             action: 'user.account_deleted',

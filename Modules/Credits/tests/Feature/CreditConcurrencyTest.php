@@ -5,7 +5,6 @@ use Illuminate\Support\Facades\Log;
 use Modules\Auth\app\Models\User;
 use Modules\Credits\app\Enums\CreditTxReason;
 use Modules\Credits\app\Services\CreditLedgerService;
-use Modules\Organizer\app\Enum\OrganizerType;
 use Modules\Organizer\app\Models\Organizer;
 use Tests\TestCase;
 
@@ -15,9 +14,7 @@ beforeEach(function () {
     $this->owner = User::factory()->create(['account_type' => 'organizer']);
     $this->organizer = Organizer::create([
         'user_id' => $this->owner->id,
-        'name' => 'Concurrency Tech Corp',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Concurrency Tech Corp',    ]);
 
     $this->ledgerService = app(CreditLedgerService::class);
 });

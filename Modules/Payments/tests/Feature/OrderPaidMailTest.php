@@ -10,7 +10,6 @@ use Modules\Events\app\Enum\EventType;
 use Modules\Events\app\Enum\EventVisibility;
 use Modules\Events\app\Models\Event;
 use Modules\Notification\app\Services\MailerService;
-use Modules\Organizer\app\Enum\OrganizerType;
 use Modules\Organizer\app\Models\Organizer;
 use Modules\Payments\app\Enums\OrderStatus;
 use Modules\Payments\app\Enums\PaymentGateway;
@@ -33,9 +32,7 @@ it('dispatches OrderPaidEvent when an order is fulfilled', function () {
     $owner = User::factory()->create(['account_type' => 'organizer']);
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'VibeFest',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'VibeFest',    ]);
 
     $event = Event::create([
         'organizer_id' => $organizer->id,
@@ -106,9 +103,7 @@ it('sends order confirmation email with ticket details to attendee', function ()
     $owner = User::factory()->create(['account_type' => 'organizer']);
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'VibeFest',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'VibeFest',    ]);
 
     $event = Event::create([
         'organizer_id' => $organizer->id,
@@ -178,9 +173,7 @@ it('sends sale notification email to organizer', function () {
     $organizer = Organizer::create([
         'user_id' => $owner->id,
         'email' => 'owner@vibefest.com',
-        'name' => 'VibeFest',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'VibeFest',    ]);
 
     $event = Event::create([
         'organizer_id' => $organizer->id,

@@ -30,8 +30,8 @@ class LoginUserAction
             throw new InvalidCredentialsException;
         }
 
-        if ($user->status !== UserStatus::ACTIVE) {
-            throw new UserNotActiveException($user->status);
+        if ($user->status !== UserStatus::ACTIVE || $user->isSuspended()) {
+            throw new UserNotActiveException($user->status ?? UserStatus::SUSPENDED);
         }
 
         if (! Hash::check($dto->password, $user->password)) {

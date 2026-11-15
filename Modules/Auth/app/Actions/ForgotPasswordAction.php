@@ -18,8 +18,8 @@ class ForgotPasswordAction
         $user = User::where('email', $email)->first();
 
         if ($user) {
-            if ($user->status !== UserStatus::ACTIVE) {
-                throw new UserNotActiveException($user->status);
+            if ($user->status !== UserStatus::ACTIVE || $user->isSuspended()) {
+                throw new UserNotActiveException($user->status ?? UserStatus::SUSPENDED);
             }
 
             PasswordResetToken::where('user_id', $user->id)->delete();

@@ -7,7 +7,6 @@ use Modules\Events\app\Enum\EventType;
 use Modules\Events\app\Enum\EventVisibility;
 use Modules\Events\app\Models\Event;
 use Modules\Events\app\Models\Favorite;
-use Modules\Organizer\app\Enum\OrganizerType;
 use Modules\Organizer\app\Models\Organizer;
 use Tests\TestCase;
 
@@ -17,9 +16,7 @@ beforeEach(function () {
     $this->owner = User::factory()->create(['account_type' => 'organizer']);
     $this->organizer = Organizer::create([
         'user_id' => $this->owner->id,
-        'name' => 'Tech Summit Hub',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Tech Summit Hub',    ]);
 
     $this->user = User::factory()->create(['account_type' => 'customer']);
 

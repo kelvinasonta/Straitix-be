@@ -4,7 +4,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Modules\Auth\app\Models\User;
 use Modules\Organizer\app\Enum\OrganizerMemberRole;
-use Modules\Organizer\app\Enum\OrganizerType;
 use Modules\Organizer\app\Models\Organizer;
 use Modules\Organizer\app\Models\OrganizerInvitation;
 use Modules\Organizer\app\Models\OrganizerMember;
@@ -16,9 +15,7 @@ test('guest can verify a valid invitation token', function () {
     $owner = User::factory()->create();
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Acme Events',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Acme Events',    ]);
 
     $rawToken = Str::random(40);
     $invitation = OrganizerInvitation::create([
@@ -53,9 +50,7 @@ test('verifying an expired invitation returns 404', function () {
     $owner = User::factory()->create();
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Acme Events',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Acme Events',    ]);
 
     $rawToken = Str::random(40);
     OrganizerInvitation::create([
@@ -78,9 +73,7 @@ test('new user can accept invitation with hashed token stored in database', func
     $owner = User::factory()->create();
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Acme Events',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Acme Events',    ]);
 
     $rawToken = Str::random(40);
     $invitation = OrganizerInvitation::create([
@@ -109,6 +102,7 @@ test('new user can accept invitation with hashed token stored in database', func
     expect($user->first_name)->toBe('Jane');
     expect($user->last_name)->toBe('Doe');
     expect($user->account_type)->toBe('organizer');
+    expect($user->email_verified_at)->not->toBeNull();
 
     $member = OrganizerMember::where('organizer_id', $organizer->id)->where('user_id', $user->id)->first();
     expect($member)->not->toBeNull();
@@ -117,13 +111,45 @@ test('new user can accept invitation with hashed token stored in database', func
     expect($invitation->fresh()->accepted_at)->not->toBeNull();
 });
 
-test('existing user can accept invitation and joins team', function () {
+test('existing unverified user can accept invitation and becomes email verified', function () {
     $owner = User::factory()->create();
     $organizer = Organizer::create([
         'user_id' => $owner->id,
         'name' => 'Acme Events',
-        'type' => OrganizerType::ORGANIZATION,
     ]);
+
+    $existingUnverifiedUser = User::factory()->create([
+        'email' => 'unverified@example.com',
+        'email_verified_at' => null,
+        'account_type' => 'customer',
+    ]);
+
+    $rawToken = Str::random(40);
+    $invitation = OrganizerInvitation::create([
+        'organizer_id' => $organizer->id,
+        'email' => 'unverified@example.com',
+        'role' => OrganizerMemberRole::STAFF,
+        'invited_by' => $owner->id,
+        'token' => hash('sha256', $rawToken),
+        'expires_at' => now()->addDays(7),
+    ]);
+
+    $response = $this->postJson('/api/v1/auth/invitations/accept', [
+        'token' => $rawToken,
+    ]);
+
+    $response->assertStatus(200);
+
+    $refreshedUser = $existingUnverifiedUser->fresh();
+    expect($refreshedUser->account_type)->toBe('organizer');
+    expect($refreshedUser->email_verified_at)->not->toBeNull();
+});
+
+test('existing user can accept invitation and joins team', function () {
+    $owner = User::factory()->create();
+    $organizer = Organizer::create([
+        'user_id' => $owner->id,
+        'name' => 'Acme Events',    ]);
 
     $existingUser = User::factory()->create([
         'email' => 'existing@example.com',
@@ -161,9 +187,7 @@ test('cannot accept an already accepted invitation', function () {
     $owner = User::factory()->create();
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Acme Events',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Acme Events',    ]);
 
     $rawToken = Str::random(40);
     OrganizerInvitation::create([

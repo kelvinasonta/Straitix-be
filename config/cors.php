@@ -21,7 +21,9 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => array_filter(array_map('trim', explode(',', (string) env('CORS_ALLOWED_ORIGINS', '*')))),
+    'allowed_origins' => env('CORS_ALLOWED_ORIGINS')
+        ? array_filter(array_map('trim', explode(',', (string) env('CORS_ALLOWED_ORIGINS'))))
+        : ['http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:3000', 'https://strayttix.vercel.app', 'http://[IP_ADDRESS]'],
 
     'allowed_origins_patterns' => [],
 

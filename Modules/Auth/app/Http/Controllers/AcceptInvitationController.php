@@ -7,11 +7,15 @@ use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Modules\Auth\app\Enum\UserStatus;
+use Modules\Auth\app\Exceptions\UserNotActiveException;
 use Modules\Auth\app\Http\Requests\AcceptInvitationRequest;
 use Modules\Auth\app\Http\Requests\AcceptInvitationTokenRequest;
 use Modules\Auth\app\Models\User;
 use Modules\Auth\app\Services\AcceptInvitationService;
 use Modules\Auth\app\Transformers\UserResource;
+use Modules\Organizer\app\Exceptions\PlanLimitExceededException;
+use Modules\Organizer\app\Exceptions\UserAlreadyOrganizerMemberException;
 use Modules\Organizer\app\Models\OrganizerMember;
 use Modules\Organizer\app\Services\OrganizerInvitationService;
 use Modules\Organizer\app\Transformers\OrganizerResource;
@@ -51,6 +55,18 @@ class AcceptInvitationController extends Controller
         [$user, $authToken] = DB::transaction(function () use ($request, $invitation) {
             $user = User::where('email', $invitation->email)->first();
 
+            if ($user && $user->isSuspended()) {
+                throw new UserNotActiveException($user->status ?? UserStatus::SUSPENDED);
+            }
+
+            if ($user && $user->belongsToOrganization($invitation->organizer_id)) {
+                throw new UserAlreadyOrganizerMemberException(
+                    message: 'You already belong to another organization. A user can only belong to one organization at a time.',
+                    status: 422,
+                    errorCode: 'USER_ALREADY_IN_ORGANIZATION',
+                );
+            }
+
             if (! $user) {
                 $user = User::create([
                     'first_name' => $request->validated('first_name'),
@@ -61,8 +77,35 @@ class AcceptInvitationController extends Controller
                     'email_verified_at' => now(),
                 ]);
             } else {
+                $updates = [];
+                if (! $user->email_verified_at) {
+                    $updates['email_verified_at'] = now();
+                }
                 if ($user->account_type !== 'organizer') {
-                    $user->update(['account_type' => 'organizer']);
+                    $updates['account_type'] = 'organizer';
+                }
+                if (! empty($updates)) {
+                    $user->update($updates);
+                }
+            }
+
+            // Verify organizer hasn't exceeded plan staff capacity
+            $organizer = $invitation->organizer;
+            $isAlreadyMember = OrganizerMember::where('organizer_id', $organizer->id)
+                ->where('user_id', $user->id)
+                ->exists();
+
+            if (! $isAlreadyMember) {
+                $currentStaffCount = OrganizerMember::where('organizer_id', $organizer->id)
+                    ->where('user_id', '!=', $organizer->user_id)
+                    ->count();
+                $maxStaff = $organizer->maxAllowedStaffMembers();
+
+                if ($currentStaffCount >= $maxStaff) {
+                    $tierLabel = $organizer->effectivePlanTier()->label();
+                    throw new PlanLimitExceededException(
+                        "Your {$tierLabel} plan allows up to {$maxStaff} staff member(s). Upgrade your subscription plan to add more team members."
+                    );
                 }
             }
 

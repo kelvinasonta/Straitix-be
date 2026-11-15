@@ -16,6 +16,17 @@ ADMIN_RESTRICTED_ENDPOINTS = [
     ("POST", "/admin/feature-flags/credits_system/toggle", {}),
     ("GET", "/admin/verifications", None),
     ("POST", "/admin/verifications/dummy-uuid/review", {"status": "approved"}),
+    ("GET", "/admin/dashboard/stats", None),
+    ("GET", "/admin/dashboard/charts", None),
+    ("GET", "/admin/organizers", None),
+    ("POST", "/admin/organizers/dummy-org-id/suspend", {"reason": "Malicious attempt"}),
+    ("GET", "/admin/users", None),
+    ("POST", "/admin/users/dummy-user-id/suspend", {"reason": "Malicious attempt"}),
+    ("GET", "/admin/events", None),
+    ("POST", "/admin/events/dummy-event-id/delist", {"reason": "Malicious attempt"}),
+    ("GET", "/admin/finance/orders", None),
+    ("GET", "/admin/finance/payouts", None),
+    ("POST", "/admin/finance/payouts/dummy-payout-id/approve", {}),
 ]
 
 

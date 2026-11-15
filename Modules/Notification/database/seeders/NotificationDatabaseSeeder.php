@@ -195,6 +195,69 @@ class NotificationDatabaseSeeder extends Seeder
                 'is_active' => true,
             ],
             [
+                'slug' => 'event_updated',
+                'subject' => 'Update Notice: "{{eventTitle}}" has been updated',
+                'body' => '<div style="font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #1e293b; background-color: #ffffff; border-radius: 8px; border: 1px solid #e2e8f0;">
+    <div style="text-align: center; margin-bottom: 24px;">
+        <h1 style="color: #0f172a; font-size: 24px; font-weight: 700; margin: 0 0 8px 0;">📝 Event Details Updated</h1>
+        <p style="color: #64748b; font-size: 16px; margin: 0;">Changes saved for {{eventTitle}} on {{siteName}}</p>
+    </div>
+    <div style="background-color: #f8fafc; border-radius: 6px; padding: 20px; margin-bottom: 24px; border: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; line-height: 1.6; margin: 0 0 12px 0;">Hello <strong>{{editorName}}</strong>,</p>
+        <p style="font-size: 15px; line-height: 1.6; margin: 0 0 12px 0;">Your event <strong>"{{eventTitle}}"</strong> has been successfully updated.</p>
+        <div style="margin: 16px 0; padding: 12px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 14px; line-height: 1.8;">
+            <div>📅 <strong>Date:</strong> {{eventStartDate}}</div>
+            <div>📍 <strong>Location:</strong> {{eventLocation}}</div>
+            <div>📊 <strong>Status:</strong> {{eventStatus}}</div>
+        </div>
+        <div style="margin-top: 12px;">
+            <p style="font-size: 13px; font-weight: 600; color: #475569; margin: 0 0 6px 0;">Changes Made:</p>
+            {{{changeSummary}}}
+        </div>
+    </div>
+    <div style="text-align: center; margin: 32px 0;">
+        <a href="{{eventManageLink}}" style="display: inline-block; background-color: #4f46e5; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 16px; padding: 14px 32px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);">Manage Your Event</a>
+    </div>
+    <div style="font-size: 13px; color: #64748b; line-height: 1.6; margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 20px;">
+        <p style="margin: 0 0 8px 0;">You can preview the public event page anytime by checking your event console.</p>
+        <p style="margin: 0;">Best regards,<br><strong>The {{siteName}} Team</strong></p>
+    </div>
+</div>',
+                'type' => 'html',
+                'is_active' => true,
+            ],
+            [
+                'slug' => 'event_updated_attendee',
+                'subject' => 'Important Update: "{{eventTitle}}" details have changed',
+                'body' => '<div style="font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #1e293b; background-color: #ffffff; border-radius: 8px; border: 1px solid #e2e8f0;">
+    <div style="text-align: center; margin-bottom: 24px;">
+        <h1 style="color: #0f172a; font-size: 24px; font-weight: 700; margin: 0 0 8px 0;">🔔 Event Information Update</h1>
+        <p style="color: #64748b; font-size: 16px; margin: 0;">The organizer of {{eventTitle}} has updated event details</p>
+    </div>
+    <div style="background-color: #f8fafc; border-radius: 6px; padding: 20px; margin-bottom: 24px; border: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; line-height: 1.6; margin: 0 0 12px 0;">Hello <strong>{{attendeeName}}</strong>,</p>
+        <p style="font-size: 15px; line-height: 1.6; margin: 0 0 12px 0;">The organizer (<strong>{{organizerName}}</strong>) has made updates to <strong>"{{eventTitle}}"</strong>, for which you hold a ticket.</p>
+        <div style="margin: 16px 0; padding: 12px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 14px; line-height: 1.8;">
+            <div>📅 <strong>Date:</strong> {{eventStartDate}}</div>
+            <div>📍 <strong>Location:</strong> {{eventLocation}}</div>
+        </div>
+        <div style="margin-top: 12px;">
+            <p style="font-size: 13px; font-weight: 600; color: #475569; margin: 0 0 6px 0;">Updated Details:</p>
+            {{{changeSummary}}}
+        </div>
+    </div>
+    <div style="text-align: center; margin: 32px 0;">
+        <a href="{{eventPublicLink}}" style="display: inline-block; background-color: #4f46e5; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 16px; padding: 14px 32px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);">View Event Details</a>
+    </div>
+    <div style="font-size: 13px; color: #64748b; line-height: 1.6; margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 20px;">
+        <p style="margin: 0 0 8px 0;">Your ticket remains valid. You can access your passes in your dashboard.</p>
+        <p style="margin: 0;">Best regards,<br><strong>The {{siteName}} Team</strong></p>
+    </div>
+</div>',
+                'type' => 'html',
+                'is_active' => true,
+            ],
+            [
                 'slug' => 'user_verification',
                 'subject' => 'Account Verification',
                 'body' => '<div>

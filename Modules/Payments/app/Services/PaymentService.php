@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Modules\Audit\app\Services\AuditService;
+use Modules\Auth\app\Models\User;
 use Modules\Payments\app\Enums\OrderStatus;
 use Modules\Payments\app\Enums\PaymentGateway;
 use Modules\Payments\app\Enums\PaymentStatus;
@@ -84,12 +85,13 @@ class PaymentService
      */
     public function verifyPayment(string $reference, array $gatewayData = []): Order
     {
+        // First check payment state inside a transaction or find payment
         $payment = Payment::with('order.items.ticketType', 'order.event', 'order.organizer', 'order.user')
             ->where('reference', $reference)
             ->firstOrFail();
 
-        if ($payment->status === PaymentStatus::Successful) {
-            return $payment->order;
+        if ($payment->status === PaymentStatus::Successful && $payment->order?->status === OrderStatus::Paid) {
+            return $payment->order->load(['items.ticketType', 'tickets.ticketType', 'payments']);
         }
 
         // If gateway is Paystack and secret key exists, optionally verify against Paystack API
@@ -127,39 +129,70 @@ class PaymentService
     public function fulfillOrder(Order $order, Payment $payment, array $gatewayData = []): Order
     {
         return DB::transaction(function () use ($order, $payment, $gatewayData): Order {
-            // Check if already fulfilled
-            if ($order->status === OrderStatus::Paid) {
-                return $order->load(['items.ticketType', 'tickets.ticketType', 'payments']);
+            // Lock payment record for update to prevent concurrent fulfilling
+            /** @var Payment|null $lockedPayment */
+            $lockedPayment = Payment::where('id', $payment->id)
+                ->lockForUpdate()
+                ->first();
+
+            // Lock order record for update to serialize parallel webhook and browser redirect collision
+            /** @var Order|null $lockedOrder */
+            $lockedOrder = Order::with(['items.ticketType', 'event', 'organizer', 'user'])
+                ->where('id', $order->id)
+                ->lockForUpdate()
+                ->first();
+
+            $targetOrder = $lockedOrder ?? $order;
+            $targetPayment = $lockedPayment ?? $payment;
+
+            // Check if already fulfilled - idempotent check under lock
+            if ($targetOrder->status === OrderStatus::Paid || $targetOrder->tickets()->exists()) {
+                return $targetOrder->load(['items.ticketType', 'tickets.ticketType', 'payments']);
             }
 
-            $payment->update([
+            $targetPayment->update([
                 'status' => PaymentStatus::Successful,
                 'paid_at' => now(),
                 'gateway_response' => $gatewayData,
             ]);
 
-            $order->update([
+            $targetUserId = $targetOrder->user_id;
+            if (! $targetUserId && ! empty($targetOrder->customer_email)) {
+                $targetUserId = User::where('email', strtolower(trim($targetOrder->customer_email)))->value('id');
+            }
+
+            $orderUpdates = [
                 'status' => OrderStatus::Paid,
                 'paid_at' => now(),
-            ]);
+            ];
+            if (! $targetOrder->user_id && $targetUserId) {
+                $orderUpdates['user_id'] = $targetUserId;
+            }
+
+            $targetOrder->update($orderUpdates);
 
             // Issue tickets for each order item
-            foreach ($order->items as $item) {
+            foreach ($targetOrder->items as $item) {
                 $ticketType = $item->ticketType;
+                $attendeeEmail = $item->attendee_email ?: $targetOrder->customer_email;
+                $ticketUserId = $targetUserId;
+                if (! empty($attendeeEmail)) {
+                    $ticketUserId = User::where('email', strtolower(trim($attendeeEmail)))->value('id') ?? $targetUserId;
+                }
 
                 for ($i = 0; $i < $item->quantity; $i++) {
                     Ticket::create([
-                        'order_id' => $order->id,
-                        'event_id' => $order->event_id,
-                        'user_id' => $order->user_id,
+                        'order_id' => $targetOrder->id,
+                        'event_id' => $targetOrder->event_id,
+                        'user_id' => $ticketUserId,
                         'ticket_type_id' => $item->ticket_type_id,
-                        'attendee_name' => $item->attendee_name ?: $order->customer_name,
-                        'attendee_email' => $item->attendee_email ?: $order->customer_email,
+                        'attendee_name' => $item->attendee_name ?: $targetOrder->customer_name,
+                        'attendee_email' => $attendeeEmail,
                         'price_paid' => $item->unit_price,
                         'currency' => $item->currency,
                         'status' => 'valid',
                         'ticket_number' => 'TKT-'.strtoupper(Str::random(8)),
-                        'qr_code' => 'EVT-'.$order->event->uuid.'-TKT-'.Str::uuid(),
+                        'qr_code' => 'EVT-'.$targetOrder->event->uuid.'-TKT-'.Str::uuid(),
                     ]);
                 }
 
@@ -172,22 +205,22 @@ class PaymentService
 
             $this->auditService->log(
                 action: 'order.paid',
-                description: "Order '{$order->order_number}' was marked as paid and tickets were issued",
-                organizer: $order->organizer,
-                user: $order->user,
+                description: "Order '{$targetOrder->order_number}' was marked as paid and tickets were issued",
+                organizer: $targetOrder->organizer,
+                user: $targetOrder->user,
                 metadata: [
-                    'order_id' => $order->id,
-                    'order_uuid' => $order->uuid,
-                    'order_number' => $order->order_number,
-                    'total' => (float) $order->total,
-                    'payment_reference' => $payment->reference,
+                    'order_id' => $targetOrder->id,
+                    'order_uuid' => $targetOrder->uuid,
+                    'order_number' => $targetOrder->order_number,
+                    'total' => (float) $targetOrder->total,
+                    'payment_reference' => $targetPayment->reference,
                 ]
             );
 
             // Dispatch OrderPaidEvent for attendee tickets email & organizer sale alert
-            event(new OrderPaidEvent($order, $payment));
+            event(new OrderPaidEvent($targetOrder, $targetPayment));
 
-            return $order->fresh(['items.ticketType', 'tickets.ticketType', 'payments']);
+            return $targetOrder->fresh(['items.ticketType', 'tickets.ticketType', 'payments']);
         });
     }
 

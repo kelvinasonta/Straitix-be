@@ -28,12 +28,15 @@ class CheckoutPaymentController extends Controller
         $validated = $request->validate([
             'gateway' => 'nullable|string|in:paystack,stripe,free',
             'callback_url' => 'nullable|url',
+            'customer_name' => 'nullable|string|max:255',
+            'customer_email' => 'nullable|email|max:255',
+            'customer_phone' => 'nullable|string|max:50',
         ]);
 
         $order = Order::where('uuid', $orderUuid)->firstOrFail();
 
         // Ensure user is authorized to pay for this order
-        $user = $request->user();
+        $user = $request->user() ?? auth('sanctum')->user();
         if ($user) {
             if ($order->user_id && $order->user_id !== $user->id) {
                 return ApiResponse::error('Unauthorized to initiate payment for this order.', 403);
@@ -42,6 +45,27 @@ class CheckoutPaymentController extends Controller
             $guestToken = $request->header('X-Guest-Token') ?? $request->input('guest_token') ?? $request->query('guest_token');
             if ($order->guest_token && $order->guest_token !== $guestToken) {
                 return ApiResponse::error('Unauthorized to initiate payment for this order. Valid guest token required.', 403);
+            }
+        }
+
+        // Update customer details on order if provided during checkout review
+        $updates = [];
+        if (! empty($validated['customer_name'])) {
+            $updates['customer_name'] = $validated['customer_name'];
+        }
+        if (! empty($validated['customer_email'])) {
+            $updates['customer_email'] = $validated['customer_email'];
+        }
+        if (array_key_exists('customer_phone', $validated) && $validated['customer_phone'] !== null) {
+            $updates['customer_phone'] = $validated['customer_phone'];
+        }
+        if (! empty($updates)) {
+            $order->update($updates);
+            if (! empty($updates['customer_name']) || ! empty($updates['customer_email'])) {
+                $order->items()->update([
+                    'attendee_name' => $order->customer_name,
+                    'attendee_email' => $order->customer_email,
+                ]);
             }
         }
 
@@ -86,16 +110,21 @@ class CheckoutPaymentController extends Controller
             $secretKey = config('paystack.secret_key');
             $signature = $request->header('x-paystack-signature');
 
-            // Verify Paystack HMAC SHA512 signature in production / non-testing environments
-            if (! empty($secretKey) && ! app()->environment('testing')) {
-                $computedSignature = hash_hmac('sha512', $request->getContent(), $secretKey);
-                if (! hash_equals($computedSignature, (string) $signature)) {
-                    Log::warning('Paystack webhook invalid signature detected.', [
-                        'ip' => $request->ip(),
-                    ]);
+            // Strictly fail closed if secret key is missing
+            if (empty($secretKey)) {
+                Log::error('Paystack webhook received but secret key is not configured.');
 
-                    return response()->json(['status' => 'error', 'message' => 'Invalid signature.'], 400);
-                }
+                return response()->json(['status' => 'error', 'message' => 'Webhook verification unavailable.'], 500);
+            }
+
+            // Verify Paystack HMAC SHA512 signature
+            $computedSignature = hash_hmac('sha512', $request->getContent(), $secretKey);
+            if (! hash_equals($computedSignature, (string) $signature)) {
+                Log::warning('Paystack webhook invalid signature detected.', [
+                    'ip' => $request->ip(),
+                ]);
+
+                return response()->json(['status' => 'error', 'message' => 'Invalid signature.'], 400);
             }
 
             $event = $payload['event'] ?? '';

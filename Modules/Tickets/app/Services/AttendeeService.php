@@ -47,7 +47,7 @@ class AttendeeService
             });
         }
 
-        $perPage = (int) ($filters['per_page'] ?? $filters['perPage'] ?? 15);
+        $perPage = min(max((int) ($filters['per_page'] ?? $filters['perPage'] ?? 15), 1), 100);
 
         return $query->paginate($perPage);
     }

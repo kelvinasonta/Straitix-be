@@ -5,6 +5,7 @@ use Modules\Organizer\app\Http\Controllers\OrganizerBankAccountController;
 use Modules\Organizer\app\Http\Controllers\OrganizerController;
 use Modules\Organizer\app\Http\Controllers\OrganizerInvitationController;
 use Modules\Organizer\app\Http\Controllers\OrganizerMemberController;
+use Modules\Organizer\app\Http\Controllers\OrganizerSubscriptionController;
 use Modules\Organizer\app\Http\Controllers\OrganizerVerificationController;
 
 // Public unauthenticated routes
@@ -35,6 +36,13 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::prefix('bank-account')->group(function () {
             Route::get('/', [OrganizerBankAccountController::class, 'show'])->middleware('organizer.role:org.finance.view');
             Route::post('/', [OrganizerBankAccountController::class, 'store'])->middleware('organizer.role:org.finance.manage');
+        });
+
+        // Subscription Plan & Fee Tier Management
+        Route::prefix('subscription')->group(function () {
+            Route::get('/', [OrganizerSubscriptionController::class, 'show'])->middleware('organizer.role:org.view');
+            Route::post('/upgrade', [OrganizerSubscriptionController::class, 'upgrade'])->middleware('organizer.role:org.finance.manage');
+            Route::post('/cancel', [OrganizerSubscriptionController::class, 'cancel'])->middleware('organizer.role:org.finance.manage');
         });
 
         // Verification
