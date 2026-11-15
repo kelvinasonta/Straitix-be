@@ -32,17 +32,22 @@ class OrderController extends Controller
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.attendee_name' => 'nullable|string|max:255',
             'items.*.attendee_email' => 'nullable|email|max:255',
-            'customer_name' => $request->user() ? 'nullable|string|max:255' : 'required|string|max:255',
-            'customer_email' => $request->user() ? 'nullable|email|max:255' : 'required|email|max:255',
+            'customer_name' => 'nullable|string|max:255',
+            'customer_email' => 'nullable|email|max:255',
             'customer_phone' => 'nullable|string|max:50',
             'notes' => 'nullable|string|max:1000',
         ]);
 
         $event = Event::where('uuid', $eventUuid)->orWhere('slug', $eventUuid)->firstOrFail();
 
+        $buyer = $request->user() ?? auth('sanctum')->user();
+        if (! $buyer && ! empty($validated['customer_email'])) {
+            $buyer = \Modules\Auth\app\Models\User::where('email', strtolower(trim($validated['customer_email'])))->first();
+        }
+
         try {
             $order = $this->orderService->createOrder(
-                buyer: $request->user(),
+                buyer: $buyer,
                 event: $event,
                 itemsData: $validated['items'],
                 customerData: [
@@ -71,8 +76,9 @@ class OrderController extends Controller
         $order = $this->orderService->getOrder($orderUuid);
 
         // Ensure user is authorized to view this order (buyer, guest with guest_token, or organizer member)
-        $user = $request->user();
+        $user = $request->user() ?? auth('sanctum')->user();
         if ($user) {
+            // If the order belongs to an account and it is not this user, check organizer membership
             if ($order->user_id && $order->user_id !== $user->id) {
                 $organizer = $order->relationLoaded('organizer')
                     ? $order->organizer
@@ -80,6 +86,18 @@ class OrderController extends Controller
 
                 if (! $organizer || ! $organizer->isMember($user)) {
                     return ApiResponse::error('Unauthorized to view this order.', 403);
+                }
+            } elseif (! $order->user_id) {
+                // For guest orders, check if the authenticated user is an organizer member
+                $organizer = $order->relationLoaded('organizer')
+                    ? $order->organizer
+                    : Organizer::with(['members'])->find($order->organizer_id);
+
+                $isOrganizer = $organizer && $organizer->isMember($user);
+                $guestToken = $request->header('X-Guest-Token') ?? $request->query('guest_token');
+
+                if (! $isOrganizer && $order->guest_token && ($order->guest_token !== $guestToken || empty($guestToken))) {
+                    return ApiResponse::error('Unauthorized to view this order. Valid guest token required.', 403);
                 }
             }
         } else {
@@ -94,6 +112,38 @@ class OrderController extends Controller
             'Order retrieved successfully.',
             new OrderResource($order)
         );
+    }
+
+    /**
+     * Cancel a pending order and release held ticket reservations.
+     */
+    public function cancel(Request $request, string $orderUuid): JsonResponse
+    {
+        $order = $this->orderService->getOrder($orderUuid);
+
+        // Authorization check: buyer or guest with valid guest_token
+        $user = $request->user() ?? auth('sanctum')->user();
+        if ($user) {
+            if ($order->user_id && $order->user_id !== $user->id) {
+                return ApiResponse::error('Unauthorized to cancel this order.', 403);
+            }
+        } else {
+            $guestToken = $request->header('X-Guest-Token') ?? $request->input('guest_token') ?? $request->query('guest_token');
+            if ($order->guest_token && ($order->guest_token !== $guestToken || empty($guestToken))) {
+                return ApiResponse::error('Unauthorized to cancel this order. Valid guest token required.', 403);
+            }
+        }
+
+        try {
+            $cancelled = $this->orderService->cancelOrder($order);
+
+            return ApiResponse::success(
+                'Order reservation cancelled and tickets released.',
+                new OrderResource($cancelled)
+            );
+        } catch (OrderException $e) {
+            return ApiResponse::error($e->getMessage(), 422);
+        }
     }
 
     /**

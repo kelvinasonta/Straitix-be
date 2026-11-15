@@ -18,7 +18,6 @@ use Modules\Events\app\Enum\EventStatus;
 use Modules\Events\app\Enum\EventType;
 use Modules\Events\app\Enum\EventVisibility;
 use Modules\Events\app\Models\Event;
-use Modules\Organizer\app\Enum\OrganizerType;
 use Modules\Organizer\app\Models\Organizer;
 use Tests\TestCase;
 
@@ -28,9 +27,7 @@ beforeEach(function () {
     $this->owner = User::factory()->create(['account_type' => 'organizer']);
     $this->organizer = Organizer::create([
         'user_id' => $this->owner->id,
-        'name' => 'African Tech Network',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'African Tech Network',    ]);
 
     $this->event = Event::create([
         'organizer_id' => $this->organizer->id,

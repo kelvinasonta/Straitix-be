@@ -13,6 +13,11 @@ class RefreshTokenController extends Controller
     public function store(Request $request)
     {
         $user = $request->user();
+
+        if ($user->isSuspended()) {
+            return ApiResponse::error('Your account is currently suspended.', 403, 'USER_SUSPENDED');
+        }
+
         $currentToken = $user->currentAccessToken();
 
         // Revoke the current access token

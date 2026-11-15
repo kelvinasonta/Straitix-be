@@ -16,7 +16,6 @@ use Modules\Events\app\Models\Event;
 use Modules\Events\app\Services\EventService;
 use Modules\Events\app\Services\Mail\SendEventCreatedEmailService;
 use Modules\Notification\app\Services\MailerService;
-use Modules\Organizer\app\Enum\OrganizerType;
 use Modules\Organizer\app\Models\Organizer;
 use Tests\TestCase;
 
@@ -28,9 +27,7 @@ it('dispatches EventCreatedEvent when an event is successfully created', functio
     $user = User::factory()->create(['account_type' => 'organizer']);
     $organizer = Organizer::create([
         'user_id' => $user->id,
-        'name' => 'Tech Summit Organizers',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Tech Summit Organizers',    ]);
 
     $eventDto = new EventDTO(
         title: 'Tech Summit 2026',
@@ -77,9 +74,7 @@ it('sends event creation email via mailer service', function () {
     $user = User::factory()->create(['email' => 'creator@example.com', 'first_name' => 'Alex', 'account_type' => 'organizer']);
     $organizer = Organizer::create([
         'user_id' => $user->id,
-        'name' => 'Acme Events',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Acme Events',    ]);
 
     $event = Event::create([
         'organizer_id' => $organizer->id,

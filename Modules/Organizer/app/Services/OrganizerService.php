@@ -4,11 +4,14 @@ namespace Modules\Organizer\app\Services;
 
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
+use Modules\Auth\app\Enum\UserStatus;
+use Modules\Auth\app\Exceptions\UserNotActiveException;
 use Modules\Auth\app\Models\User;
 use Modules\Organizer\app\Actions\UpdateOrganizerAction;
 use Modules\Organizer\app\Enum\OrganizerMemberRole;
 use Modules\Organizer\app\Enum\OrganizerPermission;
 use Modules\Organizer\app\Exceptions\OrganizerFetchFailed;
+use Modules\Organizer\app\Exceptions\UserAlreadyOrganizerMemberException;
 use Modules\Organizer\app\Models\Organizer;
 use Modules\Organizer\app\Models\OrganizerMember;
 
@@ -23,6 +26,8 @@ class OrganizerService
      */
     public function getAllForUser(User $user, int $perPage = 15): LengthAwarePaginator
     {
+        $perPage = min(max($perPage, 1), 100);
+
         $organizerIds = OrganizerMember::where('user_id', $user->id)->pluck('organizer_id');
 
         return Organizer::with(['members'])
@@ -62,11 +67,22 @@ class OrganizerService
      */
     public function create(User $user, array $data): Organizer
     {
+        if ($user->isSuspended()) {
+            throw new UserNotActiveException($user->status ?? UserStatus::SUSPENDED);
+        }
+
+        if ($user->belongsToOrganization()) {
+            throw new UserAlreadyOrganizerMemberException(
+                message: 'You already belong to an organization. A user can only belong to one organization at a time.',
+                status: 422,
+                errorCode: 'USER_ALREADY_IN_ORGANIZATION',
+            );
+        }
+
         return DB::transaction(function () use ($user, $data) {
             $organizer = Organizer::create([
                 'user_id' => $user->id,
                 'name' => $data['name'],
-                'type' => $data['type'],
                 'description' => $data['description'] ?? $data['bio'] ?? null,
                 'logo' => $data['logo'] ?? $data['logo_url'] ?? null,
                 'cover_photo' => $data['cover_photo'] ?? $data['cover_image'] ?? $data['banner_url'] ?? $data['bannerUrl'] ?? null,
@@ -126,6 +142,25 @@ class OrganizerService
             throw new OrganizerFetchFailed;
         }
 
-        return (bool) $organizer->delete();
+        return DB::transaction(function () use ($organizer) {
+            $affectedUserIds = OrganizerMember::where('organizer_id', $organizer->id)
+                ->pluck('user_id')
+                ->push($organizer->user_id)
+                ->filter()
+                ->unique()
+                ->values();
+
+            OrganizerMember::where('organizer_id', $organizer->id)->delete();
+
+            $deleted = (bool) $organizer->delete();
+
+            if ($affectedUserIds->isNotEmpty()) {
+                User::whereIn('id', $affectedUserIds)->each(function (User $affectedUser) {
+                    $affectedUser->syncAccountTypeWithOrganizations();
+                });
+            }
+
+            return $deleted;
+        });
     }
 }

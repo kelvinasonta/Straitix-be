@@ -14,6 +14,7 @@ Route::prefix('v1')->group(function () {
     // Public / Guest & Authenticated Checkout Endpoints
     Route::post('events/{eventUuid}/orders', [OrderController::class, 'store']);
     Route::get('orders/{orderUuid}', [OrderController::class, 'show']);
+    Route::post('orders/{orderUuid}/cancel', [OrderController::class, 'cancel']);
     Route::post('orders/{orderUuid}/payments', [CheckoutPaymentController::class, 'initialize']);
     Route::get('payments/verify/{reference}', [CheckoutPaymentController::class, 'verify']);
 

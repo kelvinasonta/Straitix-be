@@ -7,7 +7,6 @@ use Modules\Credits\app\Enums\CreditTxReason;
 use Modules\Credits\app\Services\CreditLedgerService;
 use Modules\Credits\app\Services\CreditTopupService;
 use Modules\Organizer\app\Enum\OrganizerMemberRole;
-use Modules\Organizer\app\Enum\OrganizerType;
 use Modules\Organizer\app\Models\Organizer;
 use Modules\Organizer\app\Models\OrganizerMember;
 use Tests\TestCase;
@@ -22,9 +21,7 @@ beforeEach(function () {
 
     $this->organizer = Organizer::create([
         'user_id' => $this->owner->id,
-        'name' => 'API Test Organizer',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'API Test Organizer',    ]);
 
     OrganizerMember::create([
         'organizer_id' => $this->organizer->id,

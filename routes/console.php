@@ -3,6 +3,7 @@
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
+use Modules\Organizer\app\Services\OrganizerSubscriptionService;
 use Modules\Payments\app\Services\OrderService;
 use Modules\Tickets\app\Models\Ticket;
 use Modules\Tickets\app\Services\Mail\SendEventReminderEmailService;
@@ -51,3 +52,13 @@ Artisan::command('events:send-reminders', function (SendEventReminderEmailServic
 
 // Schedule event reminders to run hourly
 Schedule::command('events:send-reminders')->hourly()->withoutOverlapping();
+
+/**
+ * Process expired organizer subscriptions (auto-renew with credits if funded, or revert to Free tier).
+ */
+Artisan::command('subscriptions:process-expired', function (OrganizerSubscriptionService $subscriptionService) {
+    $count = $subscriptionService->processExpiredSubscriptions();
+    $this->info("Processed {$count} expired organizer subscription(s).");
+})->purpose('Auto-renew or expire organizer subscriptions that have passed their billing period');
+
+Schedule::command('subscriptions:process-expired')->hourly()->withoutOverlapping();

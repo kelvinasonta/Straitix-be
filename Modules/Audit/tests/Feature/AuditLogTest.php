@@ -4,7 +4,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Audit\app\Services\AuditService;
 use Modules\Auth\app\Models\User;
 use Modules\Organizer\app\Enum\OrganizerMemberRole;
-use Modules\Organizer\app\Enum\OrganizerType;
 use Modules\Organizer\app\Models\Organizer;
 use Modules\Organizer\app\Models\OrganizerMember;
 use Tests\TestCase;
@@ -15,9 +14,7 @@ test('owner and manager can view audit logs for their organizer', function () {
     $owner = User::factory()->create(['account_type' => 'organizer']);
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Tech Conf Hub',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Tech Conf Hub',    ]);
 
     $auditService = app(AuditService::class);
     $auditService->log(
@@ -51,9 +48,7 @@ test('audit logs can be filtered by action and searched', function () {
     $owner = User::factory()->create(['account_type' => 'organizer']);
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Global Events Inc',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Global Events Inc',    ]);
 
     $auditService = app(AuditService::class);
     $auditService->log('event.created', 'Event Alpha was created', $organizer, $owner);
@@ -81,9 +76,7 @@ test('user can view specific audit log details', function () {
     $owner = User::factory()->create(['account_type' => 'organizer']);
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Festival Ops',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Festival Ops',    ]);
 
     $auditService = app(AuditService::class);
     $log = $auditService->log(
@@ -109,9 +102,7 @@ test('unauthorized users and non-members cannot view organizer audit logs', func
 
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Secret Summits',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Secret Summits',    ]);
 
     // Stranger cannot view
     $this->actingAs($stranger, 'sanctum')
@@ -125,9 +116,7 @@ test('staff role cannot access audit logs', function () {
 
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Conference Co',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Conference Co',    ]);
 
     OrganizerMember::create([
         'organizer_id' => $organizer->id,

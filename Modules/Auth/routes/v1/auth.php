@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use Modules\Auth\app\Http\Controllers\AcceptInvitationController;
 use Modules\Auth\app\Http\Controllers\EmailVerificationController;
 use Modules\Auth\app\Http\Controllers\ForgotPasswordController;
+use Modules\Auth\app\Http\Controllers\GoogleAuthController;
 use Modules\Auth\app\Http\Controllers\LoginController;
 use Modules\Auth\app\Http\Controllers\LogoutController;
 use Modules\Auth\app\Http\Controllers\MeController;
@@ -35,6 +36,13 @@ Route::prefix('v1')->group(function () {
             Route::post('password/reset', [ResetPasswordController::class, 'store'])->name('auth.password.reset');
         });
 
+        // Google Social Login
+        Route::prefix('google')->group(function () {
+            Route::match(['get', 'post'], 'redirect', [GoogleAuthController::class, 'redirect'])->name('auth.google.redirect');
+            Route::match(['get', 'post'], 'callback', [GoogleAuthController::class, 'callback'])->name('auth.google.callback');
+        });
+        Route::match(['get', 'post'], 'callback/google', [GoogleAuthController::class, 'callback'])->name('auth.callback.google');
+
         // Email Verification
         Route::post('email/verify', [EmailVerificationController::class, 'store'])->name('auth.verify');
 
@@ -63,6 +71,7 @@ Route::prefix('v1')->group(function () {
                 // User-Facing Activity Logs / Audit Trail
                 Route::get('activities', [UserActivityController::class, 'index'])->name('auth.activities');
                 Route::get('activity-logs', [UserActivityController::class, 'index'])->name('auth.activity-logs');
+                Route::get('me/activity', [UserActivityController::class, 'index'])->name('auth.me.activity');
 
                 // Session & Device Management
                 Route::middleware('feature:auth-session-management')->group(function () {

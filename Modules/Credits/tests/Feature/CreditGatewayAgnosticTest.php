@@ -12,7 +12,6 @@ use Modules\Credits\app\Services\CreditGatewayManager;
 use Modules\Credits\app\Services\CreditLedgerService;
 use Modules\Credits\app\Services\CreditTopupService;
 use Modules\Organizer\app\Enum\OrganizerMemberRole;
-use Modules\Organizer\app\Enum\OrganizerType;
 use Modules\Organizer\app\Models\Organizer;
 use Modules\Organizer\app\Models\OrganizerMember;
 use Tests\TestCase;
@@ -23,9 +22,7 @@ beforeEach(function () {
     $this->owner = User::factory()->create(['account_type' => 'organizer']);
     $this->organizer = Organizer::create([
         'user_id' => $this->owner->id,
-        'name' => 'Gateway Test Organizer',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Gateway Test Organizer',    ]);
 
     OrganizerMember::create([
         'organizer_id' => $this->organizer->id,

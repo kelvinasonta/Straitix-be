@@ -945,3 +945,57 @@ apiClient.interceptors.response.use(
   }
 );
 ```
+
+
+---
+
+## 11. Administrative Governance & Operations API (`/admin`)
+
+All administrative endpoints require Sanctum authentication and an active user account with administrative status (`is_admin: true`). Endpoints are secured via `admin.auth` middleware and enforce granular RBAC permissions.
+
+Base Prefix: `/api/v1/admin`
+
+### Administrative Authentication & Sessions
+- `POST /auth/login` (Rate limited: 5 attempts/min) — Administrative authentication returning access token, role, and permission matrix.
+- `GET /auth/me` (`admin.auth`) — Returns authenticated administrator profile, active role, and capability list.
+- `POST /auth/logout` (`admin.auth`) — Revokes administrative bearer token.
+
+### Platform KPIs & Time-Series Velocity (`admin.auth:dashboard.view`)
+- `GET /dashboard/stats` — Real-time gross merchandise value (GMV), platform net revenue, escrow balances, tickets sold (paid vs. free), and active event counts.
+  - Query params: `period=today|7d|30d|90d|all`, `start_date`, `end_date`.
+- `GET /dashboard/charts` — Time-series aggregation for ticket sales velocity and daily GMV curves.
+  - Query params: `days=7|14|30|90`.
+
+### Tenant & Organizer Governance (`admin.auth:organizers.view`, `organizers.verify`)
+- `GET /organizers` (`organizers.view`) — Paginated search across all tenants (`?search`, `?status=active|suspended`, `?is_verified=true|false`, `?per_page=15`).
+- `GET /organizers/{organizerUuid}` (`organizers.view`) — Comprehensive tenant dossier (organizer profile, members, bank settlement account, wallet credit balance, GMV generated, and recent events).
+- `POST /organizers/{organizerUuid}/suspend` (`organizers.verify`) — Suspend an organizer tenant with mandatory audit reason (`{"reason": "..."}`).
+- `POST /organizers/{organizerUuid}/unsuspend` (`organizers.verify`) — Reactivate a suspended organizer tenant.
+
+### Global User Management & Trust/Safety (`admin.auth:users.view`, `users.suspend`)
+- `GET /users` (`users.view`) — Global user directory across attendees and organizers (`?search`, `?status=active|suspended`, `?is_admin=true|false`).
+- `GET /users/{userUuid}` (`users.view`) — User profile details, associated tenant organizations, tickets purchased, and active session count.
+- `POST /users/{userUuid}/suspend` (`users.suspend`) — Suspend account, automatically revoking all active sessions (`{"reason": "..."}`).
+- `POST /users/{userUuid}/unsuspend` (`users.suspend`) — Reactivate a suspended user account.
+- `POST /users/{userUuid}/revoke-sessions` (`users.suspend`) — Force-terminate all active Sanctum tokens for an account.
+- `POST /users/{userUuid}/verify-email` (`users.suspend`) — Manually mark an account email as verified.
+
+### Global Event Moderation & Content Safety (`admin.auth:events.moderate`)
+- `GET /events` (`events.moderate`) — Cross-tenant event directory (`?search`, `?status=published|draft|cancelled`, `?is_featured=true|false`).
+- `GET /events/{eventUuid}` (`events.moderate`) — Full event details including ticket tiers, schedule, location, and tickets sold.
+- `POST /events/{eventUuid}/delist` (`events.moderate`) — Force-unpublish an event back to draft status (`{"reason": "..."}`).
+- `POST /events/{eventUuid}/cancel` (`events.moderate`) — Force-cancel an event with audit notification (`{"reason": "..."}`).
+- `POST /events/{eventUuid}/feature` (`events.moderate`) — Toggle event featured status on homepage/explore (`{"is_featured": true|false}`).
+- `GET /events/{eventUuid}/attendees` (`events.moderate`) — Inspect full attendee roster/manifest for emergency venue management.
+
+### Fintech, Orders & Payout Governance (`admin.auth:orders.view`, `payouts.view`, `payouts.approve`)
+- `GET /finance/orders` (`orders.view`) — Cross-tenant platform orders ledger (`?search`, `?status=paid|pending|cancelled`, `?organizer_id=...`).
+- `GET /finance/orders/{orderUuid}` (`orders.view`) — Single order inspector with payments, ticket numbers, and fees.
+- `GET /finance/payouts` (`payouts.view`) — Organizer payout request review queue (`?status=pending|approved|rejected|processed`).
+- `POST /finance/payouts/{payoutUuid}/approve` (`payouts.approve`) — Approve an organizer payout with optional settlement notes (`{"notes": "..."}`).
+- `POST /finance/payouts/{payoutUuid}/reject` (`payouts.approve`) — Reject an organizer payout request with mandatory reason (`{"reason": "..."}`).
+
+### System Runtime Configuration & Flags (`admin.auth:system_settings.manage`, `system_settings.view`)
+- `GET /settings` (`system_settings.view`) — Retrieve global platform fee parameters and configuration.
+- `POST /settings` (`system_settings.manage`) — Update platform fee percentages, fixed ticket fees, and passthrough defaults.
+- `POST /feature-flags/{feature}/toggle` (`system_settings.manage`) — Live toggle for Laravel Pennant feature flags.

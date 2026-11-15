@@ -7,7 +7,6 @@ use Modules\Events\app\Enum\EventType;
 use Modules\Events\app\Enum\EventVisibility;
 use Modules\Events\app\Models\Event;
 use Modules\Organizer\app\Enum\OrganizerMemberRole;
-use Modules\Organizer\app\Enum\OrganizerType;
 use Modules\Organizer\app\Models\Organizer;
 use Modules\Organizer\app\Models\OrganizerMember;
 use Tests\TestCase;
@@ -18,9 +17,7 @@ test('owner can create an event with complete location, recurring schedule, line
     $owner = User::factory()->create(['account_type' => 'organizer']);
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Tech Summit Hub',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Tech Summit Hub',    ]);
 
     $payload = [
         'title' => 'Global Developer Summit 2026',
@@ -111,9 +108,7 @@ test('staff cannot create or delete an event', function () {
 
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Festivals Inc',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Festivals Inc',    ]);
 
     OrganizerMember::create([
         'organizer_id' => $organizer->id,
@@ -145,9 +140,7 @@ test('organizer member can list and view their organizer events', function () {
     $owner = User::factory()->create(['account_type' => 'organizer']);
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Live Shows',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Live Shows',    ]);
 
     Event::create([
         'organizer_id' => $organizer->id,
@@ -176,9 +169,7 @@ test('manager can publish and cancel events', function () {
 
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Workshops HQ',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Workshops HQ',    ]);
 
     OrganizerMember::create([
         'organizer_id' => $organizer->id,
@@ -217,9 +208,7 @@ test('public explore endpoint returns published public events', function () {
     $owner = User::factory()->create(['account_type' => 'organizer']);
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Open Community',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Open Community',    ]);
 
     // Published & Public & Upcoming
     $publicEvent = Event::create([
@@ -267,9 +256,7 @@ test('manager can unpublish a published event back to draft', function () {
 
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Tech Talks Hub',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Tech Talks Hub',    ]);
 
     OrganizerMember::create([
         'organizer_id' => $organizer->id,
@@ -315,9 +302,7 @@ test('manager can duplicate an event with all relations and ticket tiers', funct
 
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'ScaleOps Global',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'ScaleOps Global',    ]);
 
     OrganizerMember::create([
         'organizer_id' => $organizer->id,
@@ -412,9 +397,7 @@ test('organizer member can fetch event statistics and metrics', function () {
 
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Live Hub Events',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Live Hub Events',    ]);
 
     $event = Event::create([
         'organizer_id' => $organizer->id,
@@ -473,9 +456,7 @@ test('event can be created and updated with FAQs and gallery URLs', function () 
 
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Creative Hub',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Creative Hub',    ]);
 
     $payload = [
         'title' => 'Design & UX Festival 2026',
@@ -562,9 +543,7 @@ test('owner can create an event with separate settings, custom questions, and pr
     $owner = User::factory()->create(['account_type' => 'organizer']);
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Settings Showcase Org',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Settings Showcase Org',    ]);
 
     $payload = [
         'title' => 'Developers Live 2026',
@@ -725,9 +704,7 @@ test('duplicating an event clones settings, custom questions, and promoters with
     $owner = User::factory()->create(['account_type' => 'organizer']);
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Clone Org',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'Clone Org',    ]);
 
     $event = Event::create([
         'organizer_id' => $organizer->id,

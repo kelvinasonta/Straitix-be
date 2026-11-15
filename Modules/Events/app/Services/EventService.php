@@ -29,6 +29,7 @@ use Modules\Events\app\DTOs\EventSettingDTO;
 use Modules\Events\app\Enum\EventStatus;
 use Modules\Events\app\Enum\EventVisibility;
 use Modules\Events\app\Events\EventCreatedEvent;
+use Modules\Events\app\Events\EventUpdatedEvent;
 use Modules\Events\app\Exceptions\CannotPublishWithoutTickets;
 use Modules\Events\app\Exceptions\EventAlreadyExist;
 use Modules\Events\app\Exceptions\PublishedAlready;
@@ -132,7 +133,9 @@ class EventService
 
         $this->applyFilters($query, $filters);
 
-        return $query->latest()->paginate($filters['perPage'] ?? 15);
+        $perPage = min(max((int) ($filters['per_page'] ?? $filters['perPage'] ?? 15), 1), 100);
+
+        return $query->latest()->paginate($perPage);
     }
 
     public function getOrganizerEvent(Organizer $organizer, string $eventUuid): Event
@@ -399,6 +402,9 @@ class EventService
                 ]
             );
 
+            // Dispatch event to trigger update notification email to organizer and attendees
+            event(new EventUpdatedEvent($event, $organizer, $creator, $changes));
+
             return $event->fresh(self::DEFAULT_RELATIONS);
         });
     }
@@ -570,7 +576,9 @@ class EventService
 
         $this->applyFilters($query, $filters);
 
-        return $query->paginate($filters['perPage'] ?? 12);
+        $perPage = min(max((int) ($filters['per_page'] ?? $filters['perPage'] ?? 12), 1), 100);
+
+        return $query->paginate($perPage);
     }
 
     /**
@@ -581,7 +589,10 @@ class EventService
         return Event::with(self::PUBLIC_RELATIONS)
             ->published()
             ->public()
-            ->where('slug', $slug)
+            ->where(function ($query) use ($slug) {
+                $query->where('slug', $slug)
+                    ->orWhere('uuid', $slug);
+            })
             ->firstOrFail();
     }
 

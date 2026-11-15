@@ -3,7 +3,6 @@
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Auth\app\Models\User;
 use Modules\Organizer\app\Enum\OrganizerMemberRole;
-use Modules\Organizer\app\Enum\OrganizerType;
 use Modules\Organizer\app\Enum\OrganizerVerificationStatus;
 use Modules\Organizer\app\Models\Organizer;
 use Modules\Organizer\app\Models\OrganizerMember;
@@ -17,9 +16,7 @@ function createTestOrganizerForVerification(): array
     $owner = User::factory()->create(['account_type' => 'organizer']);
     $organizer = Organizer::create([
         'user_id' => $owner->id,
-        'name' => 'Apex Event Group Ltd',
-        'type' => OrganizerType::ORGANIZATION,
-        'verification_status' => OrganizerVerificationStatus::UNVERIFIED,
+        'name' => 'Apex Event Group Ltd',        'verification_status' => OrganizerVerificationStatus::UNVERIFIED,
     ]);
 
     return [$owner, $organizer];

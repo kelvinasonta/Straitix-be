@@ -156,11 +156,11 @@ class DatabaseSeeder extends Seeder
         ];
 
         foreach ($emailTemplates as $template) {
-            EmailTemplate::create($template);
+            EmailTemplate::updateOrCreate(['slug' => $template['slug']], $template);
         }
 
         foreach ($emailSettings as $emailSetting) {
-            EmailSettings::create($emailSetting);
+            EmailSettings::updateOrCreate(['key' => $emailSetting['key']], $emailSetting);
         }
 
         $this->call([

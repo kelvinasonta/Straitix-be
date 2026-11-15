@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Auth\app\Models\User;
-use Modules\Organizer\app\Enum\OrganizerType;
 use Modules\Organizer\app\Enum\OrganizerVerificationStatus;
 use Modules\Organizer\app\Models\Organizer;
 use Modules\Organizer\app\Models\OrganizerVerification;
@@ -23,9 +22,7 @@ beforeEach(function () {
 
     $this->organizer = Organizer::create([
         'user_id' => $this->organizerOwner->id,
-        'name' => 'African Tech Summit',
-        'type' => OrganizerType::ORGANIZATION,
-    ]);
+        'name' => 'African Tech Summit',    ]);
 
     $this->verification = OrganizerVerification::create([
         'organizer_id' => $this->organizer->id,
