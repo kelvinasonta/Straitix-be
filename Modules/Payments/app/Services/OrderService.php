@@ -6,14 +6,21 @@ namespace Modules\Payments\app\Services;
 
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Modules\Audit\app\Services\AuditService;
 use Modules\Auth\app\Models\User;
 use Modules\Events\app\Models\Event;
 use Modules\Organizer\app\Models\Organizer;
 use Modules\Payments\app\Enums\OrderStatus;
+use Modules\Payments\app\Enums\PaymentStatus;
 use Modules\Payments\app\Exceptions\OrderException;
 use Modules\Payments\app\Models\Order;
 use Modules\Payments\app\Models\OrderItem;
+use Modules\Payments\app\Models\Payment;
+use Modules\Payments\app\Services\Mail\SendOrderConfirmationEmailService;
+use Modules\Payments\app\Services\Mail\SendOrderRefundedEmailService;
 use Modules\Shared\app\Contracts\AppSettingsServiceInterface;
+use Modules\Tickets\app\Events\TicketInventoryUpdated;
 use Modules\Tickets\app\Models\TicketType;
 
 class OrderService
@@ -21,6 +28,9 @@ class OrderService
     public function __construct(
         protected PaymentService $paymentService,
         protected ?AppSettingsServiceInterface $settingsService = null,
+        protected ?AuditService $auditService = null,
+        protected ?SendOrderConfirmationEmailService $orderConfirmationEmailService = null,
+        protected ?SendOrderRefundedEmailService $orderRefundedEmailService = null,
     ) {}
 
     /**
@@ -156,7 +166,9 @@ class OrderService
                 $this->paymentService->fulfillFreeOrder($order);
             }
 
-            return $order->fresh(['items.ticketType', 'event.organizer', 'tickets.ticketType']);
+            TicketInventoryUpdated::dispatchForEvent((int) $event->id, (string) $event->uuid);
+
+            return $order->fresh(['items.ticketType', 'event.organizer', 'event.location', 'tickets.ticketType']);
         });
     }
 
@@ -199,7 +211,7 @@ class OrderService
      */
     public function getOrganizerOrders(Organizer $organizer, ?string $eventUuid = null, array $filters = []): LengthAwarePaginator
     {
-        $query = Order::with(['items.ticketType', 'event', 'user', 'tickets'])
+        $query = Order::with(['items.ticketType', 'event.location', 'user', 'tickets.ticketType'])
             ->where('organizer_id', $organizer->id)
             ->latest();
 
@@ -307,8 +319,142 @@ class OrderService
                 'cancelled_at' => now(),
             ]);
 
+            TicketInventoryUpdated::dispatchForEvent((int) $order->event_id);
+
             return $order->fresh(['items.ticketType']);
         });
+    }
+
+    /**
+     * Refund a paid order, voiding tickets and restoring ticket capacity.
+     *
+     * @param  array{reason?: string|null, amount?: float|int|null}  $data
+     */
+    public function refundOrder(Organizer $organizer, string $orderUuid, array $data = []): Order
+    {
+        /** @var Order $order */
+        $order = Order::with(['items.ticketType', 'event.location', 'organizer', 'user', 'tickets.ticketType', 'payments'])
+            ->where('organizer_id', $organizer->id)
+            ->where(function ($query) use ($orderUuid): void {
+                $query->where('uuid', $orderUuid)
+                    ->orWhere('order_number', $orderUuid);
+                if (is_numeric($orderUuid)) {
+                    $query->orWhere('id', (int) $orderUuid);
+                }
+            })
+            ->firstOrFail();
+
+        if ($order->status !== OrderStatus::Paid) {
+            throw new OrderException(
+                $order->status === OrderStatus::Refunded
+                    ? 'Order has already been refunded.'
+                    : 'Only paid orders can be refunded.'
+            );
+        }
+
+        return DB::transaction(function () use ($order, $organizer, $data): Order {
+            // 1. Void/cancel issued tickets
+            foreach ($order->tickets as $ticket) {
+                $ticket->update(['status' => 'refunded']);
+            }
+
+            // 2. Decrement sold_quantity on corresponding TicketType rows
+            foreach ($order->items as $item) {
+                if ($item->ticketType) {
+                    $newSold = max(0, $item->ticketType->sold_quantity - $item->quantity);
+                    $item->ticketType->update(['sold_quantity' => $newSold]);
+                }
+            }
+
+            // 3. Mark payments as refunded
+            foreach ($order->payments as $payment) {
+                $payment->update(['status' => PaymentStatus::Refunded]);
+            }
+
+            // 4. Update order status and refunded_at timestamp
+            $order->update([
+                'status' => OrderStatus::Refunded,
+                'refunded_at' => now(),
+            ]);
+
+            // 5. Record audit log
+            $this->auditService?->log(
+                action: 'order.refunded',
+                description: "Order '{$order->order_number}' was refunded",
+                organizer: $organizer,
+                user: auth()->user(),
+                metadata: [
+                    'order_id' => $order->id,
+                    'order_uuid' => $order->uuid,
+                    'order_number' => $order->order_number,
+                    'reason' => $data['reason'] ?? null,
+                    'amount' => $data['amount'] ?? (float) $order->total,
+                ],
+                targetType: Order::class,
+                targetId: (string) $order->id,
+                reason: $data['reason'] ?? null
+            );
+
+            // 6. Dispatch refund confirmation email to customer
+            $this->orderRefundedEmailService?->execute(
+                $order,
+                $data['reason'] ?? null,
+                isset($data['amount']) ? (float) $data['amount'] : null
+            );
+
+            TicketInventoryUpdated::dispatchForEvent((int) $order->event_id);
+
+            return $order->fresh(['items.ticketType', 'event.location', 'user', 'tickets']);
+        });
+    }
+
+    /**
+     * Re-send order purchase receipt and ticket pass email to customer.
+     */
+    public function resendOrderReceipt(Organizer $organizer, string $orderUuid): void
+    {
+        /** @var Order $order */
+        $order = Order::with(['items.ticketType', 'event.location', 'event.schedule', 'organizer', 'user', 'tickets.ticketType', 'payments'])
+            ->where('organizer_id', $organizer->id)
+            ->where(function ($query) use ($orderUuid): void {
+                $query->where('uuid', $orderUuid)
+                    ->orWhere('order_number', $orderUuid);
+                if (is_numeric($orderUuid)) {
+                    $query->orWhere('id', (int) $orderUuid);
+                }
+            })
+            ->firstOrFail();
+
+        if ($order->status !== OrderStatus::Paid && $order->tickets->isEmpty()) {
+            throw new OrderException('Receipt can only be resent for paid orders or orders with issued tickets.');
+        }
+
+        $payment = $order->payments()->where('status', PaymentStatus::Successful)->latest()->first()
+            ?? $order->payments()->latest()->first()
+            ?? new Payment([
+                'order_id' => $order->id,
+                'reference' => 'RCP-'.strtoupper(Str::random(10)),
+                'status' => PaymentStatus::Successful,
+                'amount' => $order->total,
+                'currency' => $order->currency,
+            ]);
+
+        $this->orderConfirmationEmailService?->execute($order, $payment);
+
+        $this->auditService?->log(
+            action: 'order.receipt_resent',
+            description: "Purchase receipt and ticket pass re-sent for order '{$order->order_number}'",
+            organizer: $organizer,
+            user: auth()->user(),
+            metadata: [
+                'order_id' => $order->id,
+                'order_uuid' => $order->uuid,
+                'order_number' => $order->order_number,
+                'customer_email' => $order->customer_email,
+            ],
+            targetType: Order::class,
+            targetId: (string) $order->id
+        );
     }
 
     /**
@@ -336,6 +482,8 @@ class OrderService
                     'status' => OrderStatus::Cancelled,
                     'cancelled_at' => now(),
                 ]);
+
+                TicketInventoryUpdated::dispatchForEvent((int) $order->event_id);
             });
 
             $count++;

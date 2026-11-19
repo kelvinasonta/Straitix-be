@@ -43,6 +43,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
             Route::get('/', [OrganizerSubscriptionController::class, 'show'])->middleware('organizer.role:org.view');
             Route::post('/upgrade', [OrganizerSubscriptionController::class, 'upgrade'])->middleware('organizer.role:org.finance.manage');
             Route::post('/cancel', [OrganizerSubscriptionController::class, 'cancel'])->middleware('organizer.role:org.finance.manage');
+            Route::post('/resume', [OrganizerSubscriptionController::class, 'resume'])->middleware('organizer.role:org.finance.manage');
         });
 
         // Verification

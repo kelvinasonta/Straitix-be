@@ -42,6 +42,7 @@ class Organizer extends Model
         'verified_at',
         'plan_tier',
         'plan_expires_at',
+        'plan_grace_ends_at',
         'custom_fee_percentage',
         'custom_fee_fixed',
     ];
@@ -54,6 +55,7 @@ class Organizer extends Model
             'verification_status' => OrganizerVerificationStatus::class,
             'verified_at' => 'datetime',
             'plan_expires_at' => 'datetime',
+            'plan_grace_ends_at' => 'datetime',
             'custom_fee_percentage' => 'float',
             'custom_fee_fixed' => 'float',
         ];
@@ -65,7 +67,23 @@ class Organizer extends Model
     }
 
     /**
-     * Determine whether the organizer currently has an active paid plan.
+     * Determine whether the organizer is currently within a subscription renewal grace period.
+     */
+    public function isInGracePeriod(): bool
+    {
+        $rawTier = is_string($this->plan_tier) ? strtolower($this->plan_tier) : 'free';
+        if ($rawTier === '' || $rawTier === OrganizerPlanTier::Free->value) {
+            return false;
+        }
+
+        return $this->plan_expires_at !== null
+            && $this->plan_expires_at->isPast()
+            && $this->plan_grace_ends_at !== null
+            && $this->plan_grace_ends_at->isFuture();
+    }
+
+    /**
+     * Determine whether the organizer currently has an active paid plan (including during grace period).
      */
     public function hasActivePaidPlan(): bool
     {
@@ -75,7 +93,9 @@ class Organizer extends Model
         }
 
         if ($this->plan_expires_at !== null && $this->plan_expires_at->isPast()) {
-            return false;
+            if ($this->plan_grace_ends_at === null || $this->plan_grace_ends_at->isPast()) {
+                return false;
+            }
         }
 
         return OrganizerPlanTier::tryFrom($rawTier) !== null;
@@ -146,6 +166,17 @@ class Organizer extends Model
         $dbPlan = SubscriptionPlan::where('slug', $tier->value)->first();
 
         return $dbPlan ? (int) $dbPlan->max_staff_members : $tier->maxStaffMembers();
+    }
+
+    /**
+     * Return the maximum allowed concurrent active events based on the active subscription plan.
+     */
+    public function maxAllowedActiveEvents(): int
+    {
+        $tier = $this->effectivePlanTier();
+        $dbPlan = SubscriptionPlan::where('slug', $tier->value)->first();
+
+        return $dbPlan ? (int) $dbPlan->max_active_events : ($tier === OrganizerPlanTier::Free ? 10 : 100);
     }
 
     protected static function booted(): void

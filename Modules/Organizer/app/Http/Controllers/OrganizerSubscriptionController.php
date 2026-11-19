@@ -88,4 +88,32 @@ class OrganizerSubscriptionController extends Controller
             $result
         );
     }
+
+    /**
+     * Resume auto-renewal on a cancelled subscription or retry payment on a past-due subscription.
+     */
+    public function resume(Request $request, string $organizerUuid): JsonResponse
+    {
+        $organizer = Organizer::where('uuid', $organizerUuid)->firstOrFail();
+
+        try {
+            $result = $this->subscriptionService->resumeSubscription(
+                organizer: $organizer,
+                actor: $request->user()
+            );
+
+            return ApiResponse::success(
+                'Subscription auto-renewal resumed successfully.',
+                $result
+            );
+        } catch (InsufficientCreditsException $e) {
+            return ApiResponse::error(
+                $e->getMessage(),
+                422,
+                'INSUFFICIENT_CREDITS'
+            );
+        } catch (\InvalidArgumentException $e) {
+            return ApiResponse::error($e->getMessage(), 422);
+        }
+    }
 }

@@ -145,3 +145,42 @@ test('user can delete their account', function () {
     expect(User::find($user->id))->toBeNull();
     expect(User::withTrashed()->find($user->id))->not->toBeNull();
 });
+
+test('user timezone is returned in me and profile responses, normalizes offset labels, and is preserved on partial profile updates', function () {
+    $user = User::factory()->create([
+        'first_name' => 'Ada',
+        'last_name' => 'Lovelace',
+        'phone' => '+2348012345678',
+        'timezone' => 'Africa/Lagos',
+    ]);
+
+    // 1. /auth/me returns timezone and phone
+    $this->actingAs($user, 'sanctum')
+        ->getJson('/api/v1/auth/me')
+        ->assertStatus(200)
+        ->assertJsonPath('data.user.timezone', 'Africa/Lagos')
+        ->assertJsonPath('data.user.phone', '+2348012345678');
+
+    // 2. Updating timezone with human-readable offset label normalizes and persists IANA identifier
+    $this->actingAs($user, 'sanctum')
+        ->putJson('/api/v1/auth/profile', [
+            'timezone' => 'America/New_York (EST/EDT)',
+        ])
+        ->assertStatus(200)
+        ->assertJsonPath('data.timezone', 'America/New_York')
+        ->assertJsonPath('data.firstName', 'Ada');
+
+    expect($user->fresh()->timezone)->toBe('America/New_York');
+
+    // 3. Updating first_name and last_name without sending timezone preserves America/New_York instead of resetting to UTC
+    $this->actingAs($user, 'sanctum')
+        ->putJson('/api/v1/auth/profile', [
+            'first_name' => 'Adaora',
+            'last_name' => 'Lovelace',
+        ])
+        ->assertStatus(200)
+        ->assertJsonPath('data.firstName', 'Adaora')
+        ->assertJsonPath('data.timezone', 'America/New_York');
+
+    expect($user->fresh()->timezone)->toBe('America/New_York');
+});

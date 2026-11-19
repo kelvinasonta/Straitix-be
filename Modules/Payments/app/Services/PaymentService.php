@@ -13,6 +13,7 @@ use Modules\Payments\app\Enums\OrderStatus;
 use Modules\Payments\app\Enums\PaymentGateway;
 use Modules\Payments\app\Enums\PaymentStatus;
 use Modules\Payments\app\Events\OrderPaidEvent;
+use Modules\Payments\app\Events\OrderPaymentConfirmed;
 use Modules\Payments\app\Exceptions\OrderException;
 use Modules\Payments\app\Models\Order;
 use Modules\Payments\app\Models\Payment;
@@ -219,6 +220,15 @@ class PaymentService
 
             // Dispatch OrderPaidEvent for attendee tickets email & organizer sale alert
             event(new OrderPaidEvent($targetOrder, $targetPayment));
+
+            // Push real-time payment confirmation over WebSocket to private-orders.{orderUuid}
+            try {
+                event(new OrderPaymentConfirmed($targetOrder));
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("OrderPaymentConfirmed broadcast skipped for order [{$targetOrder->uuid}]: {$e->getMessage()}");
+            }
+
+            \Modules\Tickets\app\Events\TicketInventoryUpdated::dispatchForEvent((int) $targetOrder->event_id);
 
             return $targetOrder->fresh(['items.ticketType', 'tickets.ticketType', 'payments']);
         });

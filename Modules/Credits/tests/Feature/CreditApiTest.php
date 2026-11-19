@@ -236,3 +236,91 @@ test('public paystack webhook rejects invalid signature', function () {
 
     $response->assertStatus(400);
 });
+
+test('organizer can retrieve active credit packages from /credits/packages and /credits/gateways', function () {
+    $packagesRes = $this->actingAs($this->owner)
+        ->getJson("/api/v1/organizers/{$this->organizer->uuid}/credits/packages");
+
+    $packagesRes->assertStatus(200)
+        ->assertJsonPath('success', true)
+        ->assertJsonCount(3, 'data')
+        ->assertJsonPath('data.0.id', 'starter')
+        ->assertJsonPath('data.0.credits', 100)
+        ->assertJsonPath('data.0.price_kobo', 100000)
+        ->assertJsonPath('data.1.id', 'growth')
+        ->assertJsonPath('data.1.credits', 500)
+        ->assertJsonPath('data.1.price_kobo', 450000)
+        ->assertJsonPath('data.1.discount_label', 'Save 10%')
+        ->assertJsonPath('data.1.is_popular', true)
+        ->assertJsonPath('data.2.id', 'power')
+        ->assertJsonPath('data.2.credits', 1500)
+        ->assertJsonPath('data.2.price_kobo', 1200000)
+        ->assertJsonPath('data.2.discount_label', 'Save 20%');
+
+    $gatewaysRes = $this->actingAs($this->owner)
+        ->getJson("/api/v1/organizers/{$this->organizer->uuid}/credits/gateways");
+
+    $gatewaysRes->assertStatus(200)
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('data.rate_per_credit_kobo', 1000)
+        ->assertJsonCount(3, 'data.packages');
+});
+
+test('initializing top-up with package_id enforces server package pricing and verify awards exact package credits', function () {
+    \Illuminate\Support\Facades\Http::fake([
+        '*/transaction/initialize' => \Illuminate\Support\Facades\Http::response([
+            'status' => true,
+            'message' => 'Authorization URL created',
+            'data' => [
+                'authorization_url' => 'https://checkout.paystack.com/test_power_pack',
+                'access_code' => 'acc_power_123',
+                'reference' => 'CREDIT-PSTK-POWER-1500',
+            ],
+        ], 200),
+        '*/transaction/verify/*' => \Illuminate\Support\Facades\Http::response([
+            'status' => true,
+            'message' => 'Verification successful',
+            'data' => [
+                'status' => 'success',
+                'reference' => 'CREDIT-PSTK-POWER-1500',
+                'amount' => 1200000,
+                'currency' => 'NGN',
+            ],
+        ], 200),
+    ]);
+
+    // Pass package_id = 'power' (1500 credits for 1,200,000 kobo) even with a forged client credits value
+    $initRes = $this->actingAs($this->owner)
+        ->postJson("/api/v1/organizers/{$this->organizer->uuid}/credits/top-up/initialize", [
+            'package_id' => 'power',
+            'credits' => 999999,
+        ]);
+
+    $initRes->assertStatus(200)
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('data.credits', 1500)
+        ->assertJsonPath('data.amount_kobo', 1200000);
+
+    $reference = $initRes->json('data.reference');
+    expect($reference)->toBe('CREDIT-PSTK-POWER-1500');
+
+    // Verify the reference and ensure the exact 1,500 credits recorded on the initialized transaction are awarded
+    // (Notice the mock verify response above omitted metadata.credits_requested, proving verifyAndSettle uses the authoritative DB record!)
+    $verifyRes = $this->actingAs($this->owner)
+        ->getJson("/api/v1/organizers/{$this->organizer->uuid}/credits/top-up/verify/{$reference}");
+
+    $verifyRes->assertStatus(200)
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('data.credits_awarded', 1500)
+        ->assertJsonPath('data.balance', 1500);
+});
+
+test('initializing top-up with invalid package_id returns 422', function () {
+    $response = $this->actingAs($this->owner)
+        ->postJson("/api/v1/organizers/{$this->organizer->uuid}/credits/top-up/initialize", [
+            'package_id' => 'non_existent_pack',
+        ]);
+
+    $response->assertStatus(422)
+        ->assertJsonPath('success', false);
+});

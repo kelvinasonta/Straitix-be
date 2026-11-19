@@ -18,6 +18,9 @@ class CreditWalletResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $threshold = (int) ($this->low_balance_threshold ?? 500);
+        $alertEnabled = (bool) ($this->low_balance_alert_enabled ?? true);
+
         return [
             'id' => $this->id,
             'uuid' => $this->uuid,
@@ -25,6 +28,10 @@ class CreditWalletResource extends JsonResource
             'balance' => (int) $this->balance,
             'reserved_balance' => (int) $this->reserved_balance,
             'available_balance' => (int) $this->available_balance,
+            'low_balance_threshold' => $threshold,
+            'low_balance_alert_enabled' => $alertEnabled,
+            'is_below_threshold' => $alertEnabled && (int) $this->available_balance <= $threshold,
+            'last_low_balance_alert_at' => $this->last_low_balance_alert_at?->toISOString(),
             'currency' => $this->currency,
             'version' => (int) $this->version,
             'created_at' => $this->created_at?->toISOString(),

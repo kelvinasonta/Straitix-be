@@ -60,37 +60,7 @@ it('dispatches EventUpdatedEvent when an event is updated', function () {
     });
 });
 
-it('does not send attendee email on non-material event update', function () {
-    $user = User::factory()->create(['account_type' => 'organizer']);
-    $organizer = Organizer::create([
-        'user_id' => $user->id,
-        'name' => 'Acme Events',
-        'email' => 'acme@example.com',
-    ]);
-
-    $event = Event::create([
-        'organizer_id' => $organizer->id,
-        'user_id' => $user->id,
-        'title' => 'Design & Code 2026',
-        'description' => 'Original description',
-        'event_country' => 'Nigeria',
-        'event_type' => EventType::PHYSICAL,
-        'event_format' => 'Conference',
-        'status' => EventStatus::PUBLISHED,
-        'visibility' => EventVisibility::PUBLIC,
-    ]);
-
-    $mailerService = Mockery::mock(MailerService::class);
-    // Should NOT receive any send calls when only description or non-material fields change
-    $mailerService->shouldNotReceive('send');
-
-    $service = new SendEventUpdatedEmailService($mailerService);
-    $service->execute($event, $organizer, $user, [
-        'description' => ['old' => 'Old description', 'new' => 'Updated description'],
-    ]);
-});
-
-it('sends event updated emails to attendees when material details change (date or venue)', function () {
+it('does not send attendee emails when an event is updated', function () {
     $user = User::factory()->create([
         'email' => 'creator@example.com',
         'first_name' => 'Alex',
@@ -134,19 +104,8 @@ it('sends event updated emails to attendees when material details change (date o
     ]);
 
     $mailerService = Mockery::mock(MailerService::class);
-
-    // Attendee notification email should be dispatched when venue/date changes
-    $mailerService->shouldReceive('send')
-        ->once()
-        ->with(
-            'jane@example.com',
-            'event_updated_attendee',
-            Mockery::on(function ($payload) {
-                return $payload['eventTitle'] === 'Design & Code 2026'
-                    && $payload['attendeeName'] === 'Jane Attendee'
-                    && $payload['organizerName'] === 'Acme Events';
-            })
-        );
+    // Should NOT send emails to attendees even when material details change
+    $mailerService->shouldNotReceive('send');
 
     $service = new SendEventUpdatedEmailService($mailerService);
     $service->execute($event, $organizer, $user, [

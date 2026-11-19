@@ -22,13 +22,22 @@ class ProfileService
     {
         try {
             return DB::transaction(function () use ($user, $data) {
-                // 1. Fill the model without saving immediately
-                $user->fill([
-                    'first_name' => $data->firstName,
-                    'last_name' => $data->lastName,
-                    'phone' => $data->phone,
-                    'timezone' => $data->timezone,
-                ]);
+                // 1. Fill only the attributes that were provided in the DTO
+                $updates = [];
+                if ($data->firstName !== null) {
+                    $updates['first_name'] = $data->firstName;
+                }
+                if ($data->lastName !== null) {
+                    $updates['last_name'] = $data->lastName;
+                }
+                if ($data->hasPhone) {
+                    $updates['phone'] = $data->phone;
+                }
+                if ($data->hasTimezone && $data->timezone !== null) {
+                    $updates['timezone'] = $data->timezone;
+                }
+
+                $user->fill($updates);
 
                 // 2. Capture each changed field with its old and new values
                 $changes = [];

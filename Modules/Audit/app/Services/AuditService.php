@@ -71,7 +71,7 @@ class AuditService
         }
 
         if (! empty($filters['search'])) {
-            $search = '%'.$filters['search'].'%';
+            $search = '%' . $filters['search'] . '%';
             $query->where(function ($q) use ($search) {
                 $q->where('description', 'like', $search)
                     ->orWhere('action', 'like', $search)
@@ -105,7 +105,7 @@ class AuditService
         }
 
         if (! empty($filters['search'])) {
-            $search = '%'.$filters['search'].'%';
+            $search = '%' . $filters['search'] . '%';
             $query->where(function ($q) use ($search) {
                 $q->where('description', 'like', $search)
                     ->orWhere('action', 'like', $search);
@@ -139,7 +139,7 @@ class AuditService
         }
 
         if (! empty($filters['search'])) {
-            $search = '%'.$filters['search'].'%';
+            $search = '%' . $filters['search'] . '%';
             $query->where(function ($q) use ($search) {
                 $q->where('description', 'like', $search)
                     ->orWhere('action', 'like', $search);

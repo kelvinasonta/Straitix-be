@@ -76,6 +76,16 @@ class GoogleAuthController extends Controller
 
             $isNewUser = false;
 
+            // Resolve valid browser timezone if provided via body or X-Timezone header
+            $rawTz = $request->input('timezone') ?? $request->header('X-Timezone');
+            $detectedTz = 'UTC';
+            if (is_string($rawTz)) {
+                $cleanedTz = trim((string) preg_replace('/\s*\([^)]*\).*$/', '', $rawTz));
+                if ($cleanedTz !== '' && in_array($cleanedTz, \DateTimeZone::listIdentifiers(\DateTimeZone::ALL_WITH_BC), true)) {
+                    $detectedTz = $cleanedTz;
+                }
+            }
+
             if ($user) {
                 if ($user->isSuspended()) {
                     throw new UserNotActiveException($user->status ?? UserStatus::SUSPENDED);
@@ -90,6 +100,9 @@ class GoogleAuthController extends Controller
                 }
                 if (empty($user->avatar) && $avatar) {
                     $updates['avatar'] = $avatar;
+                }
+                if (empty($user->timezone) && $detectedTz !== 'UTC') {
+                    $updates['timezone'] = $detectedTz;
                 }
                 if (! empty($updates)) {
                     $user->update($updates);
@@ -107,6 +120,7 @@ class GoogleAuthController extends Controller
                     'email' => $email,
                     'google_id' => $googleId,
                     'avatar' => $avatar,
+                    'timezone' => $detectedTz,
                     'email_verified_at' => now(),
                     'account_type' => 'customer',
                     'status' => UserStatus::ACTIVE,

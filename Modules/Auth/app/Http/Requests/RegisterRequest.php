@@ -10,11 +10,24 @@ class RegisterRequest extends FormRequest
 {
     protected function prepareForValidation()
     {
+        $merges = [];
+
         if (is_string($this->email)) {
-            $this->merge([
-                // Convert the email to lowercase before validation
-                'email' => Str::lower($this->email),
-            ]);
+            $merges['email'] = Str::lower($this->email);
+        }
+
+        $rawTz = $this->input('timezone') ?? $this->input('time_zone') ?? $this->header('X-Timezone');
+        if (is_string($rawTz)) {
+            $cleaned = trim((string) preg_replace('/\s*\([^)]*\).*$/', '', $rawTz));
+            if ($cleaned !== '' && in_array($cleaned, \DateTimeZone::listIdentifiers(\DateTimeZone::ALL_WITH_BC), true)) {
+                $merges['timezone'] = $cleaned;
+            } elseif ($this->has('timezone')) {
+                $merges['timezone'] = $cleaned;
+            }
+        }
+
+        if (! empty($merges)) {
+            $this->merge($merges);
         }
     }
 
@@ -28,7 +41,7 @@ class RegisterRequest extends FormRequest
             'last_name' => 'required|string|min:2|max:255',
             'email' => 'required|string|unique:users,email|email:rfc',
             'phone' => ['nullable', 'string', 'regex:/^\+?[1-9]\d{1,14}$/'],
-            'timezone' => ['nullable', 'string', 'timezone'],
+            'timezone' => ['nullable', 'string', 'timezone:all'],
             'account_type' => 'required|in:customer,organizer',
             'organization_name' => 'nullable|string|min:3|max:255',
             'password' => [

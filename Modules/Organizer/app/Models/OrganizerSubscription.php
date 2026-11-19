@@ -30,8 +30,10 @@ class OrganizerSubscription extends Model
         'status',
         'auto_renew',
         'reference',
+        'invoice_number',
         'starts_at',
         'ends_at',
+        'grace_ends_at',
         'cancelled_at',
         'metadata',
     ];
@@ -44,6 +46,7 @@ class OrganizerSubscription extends Model
             'auto_renew' => 'boolean',
             'starts_at' => 'datetime',
             'ends_at' => 'datetime',
+            'grace_ends_at' => 'datetime',
             'cancelled_at' => 'datetime',
             'metadata' => 'array',
         ];
@@ -57,6 +60,9 @@ class OrganizerSubscription extends Model
             }
             if (empty($sub->reference)) {
                 $sub->reference = 'SUB-'.strtoupper(Str::random(12));
+            }
+            if (empty($sub->invoice_number)) {
+                $sub->invoice_number = 'INV-'.now()->format('Ym').'-'.strtoupper(Str::random(6));
             }
         });
     }

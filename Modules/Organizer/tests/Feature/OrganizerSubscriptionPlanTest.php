@@ -331,3 +331,127 @@ test('order service applies discounted fee from database plan, global fee for ex
     expect((float) $customOrder->service_fee)->toBe(100.0)
         ->and((float) $customOrder->total)->toBe(10100.0);
 });
+
+test('unfunded auto-renew subscription enters 3-day grace period, retains pro benefits, and can be resumed or expired', function () {
+    $owner = User::factory()->create();
+    $organizer = Organizer::create([
+        'user_id' => $owner->id,
+        'name' => 'Grace Period Org',
+        'slug' => 'grace-period-org',
+        'plan_tier' => 'pro',
+        'plan_expires_at' => now()->subMinute(),
+    ]);
+
+    $sub = OrganizerSubscription::create([
+        'organizer_id' => $organizer->id,
+        'plan_slug' => 'pro',
+        'billing_cycle' => 'monthly',
+        'payment_method' => 'credits',
+        'status' => 'active',
+        'auto_renew' => true,
+        'starts_at' => now()->subDays(30),
+        'ends_at' => now()->subMinute(),
+    ]);
+
+    // 1. Run expired processor with 0 credits -> enters 3-day grace period ('past_due')
+    $this->artisan('subscriptions:process-expired')->assertExitCode(0);
+
+    $organizer->refresh();
+    $sub->refresh();
+
+    expect($sub->status)->toBe('past_due')
+        ->and($organizer->isInGracePeriod())->toBeTrue()
+        ->and($organizer->hasActivePaidPlan())->toBeTrue()
+        ->and($organizer->effectivePlanTier()->value)->toBe('pro');
+
+    // 2. Top up wallet and resume subscription during grace period -> clears grace period and extends plan
+    /** @var CreditLedgerService $ledger */
+    $ledger = app(CreditLedgerService::class);
+    $wallet = $ledger->getOrCreateWallet($organizer);
+    $ledger->creditWallet(
+        wallet: $wallet,
+        amount: 2000,
+        reason: CreditTxReason::TOPUP,
+        idempotencyKey: 'grace_topup_seed',
+        reference: 'REF-GRACE',
+        description: 'Top-up during grace period'
+    );
+
+    $this->actingAs($owner)
+        ->postJson("/api/v1/organizers/{$organizer->uuid}/subscription/resume")
+        ->assertSuccessful()
+        ->assertJsonPath('data.current_plan.in_grace_period', false)
+        ->assertJsonPath('data.current_plan.status', 'active')
+        ->assertJsonPath('data.current_plan.tier', 'pro');
+
+    $organizer->refresh();
+    expect($organizer->isInGracePeriod())->toBeFalse()
+        ->and($organizer->plan_expires_at->isFuture())->toBeTrue()
+        ->and($wallet->fresh()->balance)->toBe(500);
+
+    // 3. Simulate grace period elapsing without funds -> downgrades to free
+    $latestSub = OrganizerSubscription::where('organizer_id', $organizer->id)->latest('id')->first();
+    $latestSub->update([
+        'status' => 'past_due',
+        'ends_at' => now()->subDays(4),
+        'grace_ends_at' => now()->subMinute(),
+    ]);
+    $organizer->update([
+        'plan_expires_at' => now()->subDays(4),
+        'plan_grace_ends_at' => now()->subMinute(),
+    ]);
+
+    $this->artisan('subscriptions:process-expired')->assertExitCode(0);
+
+    $organizer->refresh();
+    expect($organizer->plan_tier)->toBe('free')
+        ->and($organizer->hasActivePaidPlan())->toBeFalse()
+        ->and($latestSub->fresh()->status)->toBe('expired');
+});
+
+test('usage metering, quota telemetry, and low-balance threshold alerts work as expected', function () {
+    $owner = User::factory()->create();
+    $organizer = Organizer::create([
+        'user_id' => $owner->id,
+        'name' => 'Metered Cloud Org',
+        'slug' => 'metered-cloud-org',
+    ]);
+
+    /** @var CreditLedgerService $ledger */
+    $ledger = app(CreditLedgerService::class);
+    $wallet = $ledger->getOrCreateWallet($organizer);
+
+    // 1. Update wallet low-balance threshold to 600 credits
+    $this->actingAs($owner)
+        ->putJson("/api/v1/organizers/{$organizer->uuid}/credits/wallet/settings", [
+            'low_balance_threshold' => 600,
+            'low_balance_alert_enabled' => true,
+        ])
+        ->assertSuccessful()
+        ->assertJsonPath('data.low_balance_threshold', 600)
+        ->assertJsonPath('data.low_balance_alert_enabled', true);
+
+    // 2. Fund wallet with 2,000 credits, then upgrade to Pro (1,500 credits) -> remaining balance = 500 (<= 600 threshold)
+    $ledger->creditWallet(
+        wallet: $wallet->fresh(),
+        amount: 2000,
+        reason: CreditTxReason::TOPUP,
+        idempotencyKey: 'meter_seed_2000',
+        reference: 'REF-METER-2000',
+        description: 'Initial wallet deposit'
+    );
+
+    $this->actingAs($owner)
+        ->postJson("/api/v1/organizers/{$organizer->uuid}/subscription/upgrade", [
+            'plan_tier' => 'pro',
+            'billing_cycle' => 'monthly',
+        ])
+        ->assertSuccessful()
+        ->assertJsonPath('data.wallet.balance', 500)
+        ->assertJsonPath('data.wallet.is_below_threshold', true)
+        ->assertJsonPath('data.usage_metering.credits_consumed_30d', 1500)
+        ->assertJsonPath('data.usage_metering.credits_topped_up_30d', 2000)
+        ->assertJsonPath('data.usage_quotas.staff_members.limit', 15);
+
+    expect($wallet->fresh()->last_low_balance_alert_at)->not->toBeNull();
+});

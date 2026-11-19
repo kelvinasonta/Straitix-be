@@ -8,6 +8,8 @@ use App\Http\Controllers\Controller;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use InvalidArgumentException;
+use Modules\Credits\app\Exceptions\InsufficientCreditsException;
 use Modules\Organizer\app\Models\Organizer;
 use Modules\Tickets\app\Exceptions\TicketCheckInException;
 use Modules\Tickets\app\Services\AttendeeService;
@@ -137,5 +139,44 @@ class AttendeeController extends Controller
             'Gate statistics retrieved successfully.',
             $stats
         );
+    }
+
+    /**
+     * Send an email broadcast to event attendees using wallet credits (1 credit per unique recipient).
+     */
+    public function broadcastEmail(Request $request, string $organizerUuid, string $eventUuid): JsonResponse
+    {
+        $validated = $request->validate([
+            'subject' => ['required', 'string', 'min:3', 'max:255'],
+            'message' => ['required', 'string', 'min:5', 'max:10000'],
+            'ticket_type_uuid' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $organizer = $request->attributes->get('active_organizer')
+            ?? Organizer::where('uuid', $organizerUuid)->firstOrFail();
+
+        try {
+            $result = $this->attendeeService->broadcastEmail(
+                organizer: $organizer,
+                eventUuid: $eventUuid,
+                subject: trim($validated['subject']),
+                message: trim($validated['message']),
+                ticketTypeUuid: $validated['ticket_type_uuid'] ?? null,
+                actor: $request->user()
+            );
+
+            return ApiResponse::success(
+                "Email broadcast sent to {$result['sent_count']} attendee(s) ({$result['credits_charged']} credits used).",
+                $result
+            );
+        } catch (InsufficientCreditsException $e) {
+            return ApiResponse::error(
+                $e->getMessage(),
+                422,
+                'INSUFFICIENT_CREDITS'
+            );
+        } catch (InvalidArgumentException $e) {
+            return ApiResponse::error($e->getMessage(), 422);
+        }
     }
 }

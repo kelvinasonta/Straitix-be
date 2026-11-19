@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Log;
 use Modules\Payments\app\Exceptions\OrderException;
 use Modules\Payments\app\Models\Order;
@@ -140,5 +141,50 @@ class CheckoutPaymentController extends Controller
         }
 
         return response()->json(['status' => 'success'], 200);
+    }
+
+    /**
+     * Authorize private-orders.{orderUuid} WebSocket channel for guest or authenticated buyers.
+     */
+    public function broadcastAuth(Request $request): mixed
+    {
+        $validated = $request->validate([
+            'socket_id' => 'required|string',
+            'channel_name' => 'required|string',
+        ]);
+
+        $channelName = (string) $validated['channel_name'];
+        if (! preg_match('/^private-orders\.([a-zA-Z0-9-]+)$/', $channelName, $matches)) {
+            return ApiResponse::error('Invalid order broadcast channel.', 403);
+        }
+
+        $orderUuid = $matches[1];
+        $order = Order::where('uuid', $orderUuid)->first();
+        if (! $order) {
+            return ApiResponse::error('Order not found.', 404);
+        }
+
+        $user = $request->user() ?? auth('sanctum')->user();
+        $authorized = false;
+
+        if ($user) {
+            $authorized = ($order->user_id !== null && (int) $order->user_id === (int) $user->id)
+                || ($order->customer_email !== null && strtolower((string) $order->customer_email) === strtolower((string) $user->email));
+        }
+
+        if (! $authorized) {
+            $guestToken = (string) ($request->header('X-Guest-Token') ?? $request->input('guest_token') ?? '');
+            if ($order->guest_token && $guestToken !== '' && hash_equals((string) $order->guest_token, $guestToken)) {
+                $authorized = true;
+            }
+        }
+
+        if (! $authorized) {
+            return ApiResponse::error('Unauthorized to subscribe to this order channel.', 403);
+        }
+
+        return Broadcast::driver()->validAuthenticationResponse($request, [
+            'user_id' => $user ? (string) $user->uuid : 'guest',
+        ]);
     }
 }

@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Auth\app\Models\User;
 use Modules\Events\app\Models\Event;
+use Modules\Tickets\app\Events\TicketInventoryUpdated;
 use Modules\Tickets\app\Models\Ticket;
 use Modules\Tickets\app\Models\TicketType;
 
@@ -164,6 +165,8 @@ class TicketService
             ]);
 
             $ticketType->increment('sold_quantity');
+
+            TicketInventoryUpdated::dispatchForEvent((int) $ticketType->event_id);
 
             return $ticket->load(['event.organizer', 'event.location', 'event.schedule', 'ticketType', 'user']);
         });

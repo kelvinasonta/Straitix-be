@@ -26,10 +26,28 @@ class CreditLedgerService
             [
                 'balance' => 0,
                 'reserved_balance' => 0,
+                'low_balance_threshold' => 500,
+                'low_balance_alert_enabled' => true,
                 'currency' => 'NGN',
                 'version' => 1,
             ]
         );
+    }
+
+    /**
+     * Update low-balance threshold and alert settings for a credit wallet.
+     */
+    public function updateWalletSettings(
+        OrganizerCreditWallet $wallet,
+        int $lowBalanceThreshold,
+        bool $lowBalanceAlertEnabled
+    ): OrganizerCreditWallet {
+        $wallet->update([
+            'low_balance_threshold' => max(0, $lowBalanceThreshold),
+            'low_balance_alert_enabled' => $lowBalanceAlertEnabled,
+        ]);
+
+        return $wallet->fresh();
     }
 
     /**
@@ -66,10 +84,16 @@ class CreditLedgerService
             $balanceBefore = $lockedWallet->balance;
             $balanceAfter = $balanceBefore + $amount;
 
-            $lockedWallet->update([
+            $threshold = (int) ($lockedWallet->low_balance_threshold ?? 500);
+            $walletUpdates = [
                 'balance' => $balanceAfter,
                 'version' => $lockedWallet->version + 1,
-            ]);
+            ];
+            if ($balanceAfter > $threshold && $lockedWallet->last_low_balance_alert_at !== null) {
+                $walletUpdates['last_low_balance_alert_at'] = null;
+            }
+
+            $lockedWallet->update($walletUpdates);
 
             return CreditLedger::create([
                 'wallet_id' => $lockedWallet->id,
@@ -133,6 +157,8 @@ class CreditLedgerService
                 'balance' => $balanceAfter,
                 'version' => $lockedWallet->version + 1,
             ]);
+
+            $this->checkAndDispatchLowBalanceAlert($lockedWallet, $balanceBefore, $balanceAfter);
 
             return CreditLedger::create([
                 'wallet_id' => $lockedWallet->id,
@@ -253,6 +279,8 @@ class CreditLedgerService
             ]);
 
             if ($actualConsumedAmount > 0) {
+                $this->checkAndDispatchLowBalanceAlert($lockedWallet, $balanceBefore, $newBalance);
+
                 $ledgerMetadata = array_merge($metadata, [
                     'reservation_id' => $lockedReservation->id,
                     'reserved_amount' => $lockedReservation->amount,
@@ -380,5 +408,111 @@ class CreditLedgerService
             'computed_balance' => $computedBalance,
             'difference' => $difference,
         ];
+    }
+
+    /**
+     * Compute 30-day usage metering, daily burn rate, estimated runway, and spend breakdown by reason.
+     *
+     * @return array<string, mixed>
+     */
+    public function getUsageMetering(OrganizerCreditWallet $wallet, int $days = 30): array
+    {
+        $since = now()->subDays($days);
+
+        $consumed = (int) CreditLedger::where('wallet_id', $wallet->id)
+            ->where('type', CreditTxType::DEBIT)
+            ->where('created_at', '>=', $since)
+            ->sum('amount');
+
+        $toppedUp = (int) CreditLedger::where('wallet_id', $wallet->id)
+            ->where('type', CreditTxType::CREDIT)
+            ->where('created_at', '>=', $since)
+            ->sum('amount');
+
+        $dailyBurnRate = $days > 0 ? round($consumed / $days, 2) : 0.0;
+        $available = (int) $wallet->available_balance;
+        $estimatedRunwayDays = $dailyBurnRate > 0.0
+            ? (int) floor($available / $dailyBurnRate)
+            : null;
+
+        $breakdownRows = CreditLedger::where('wallet_id', $wallet->id)
+            ->where('type', CreditTxType::DEBIT)
+            ->where('created_at', '>=', $since)
+            ->selectRaw('reason, COUNT(*) as tx_count, COALESCE(SUM(amount), 0) as total_credits')
+            ->groupBy('reason')
+            ->orderByDesc('total_credits')
+            ->get();
+
+        $breakdown = $breakdownRows->map(fn ($row): array => [
+            'reason' => is_object($row->reason) ? $row->reason->value : (string) $row->reason,
+            'tx_count' => (int) $row->tx_count,
+            'total_credits' => (int) $row->total_credits,
+            'percentage' => $consumed > 0 ? round(((int) $row->total_credits / $consumed) * 100, 1) : 0.0,
+        ])->values()->all();
+
+        return [
+            'window_days' => $days,
+            'credits_consumed_30d' => $consumed,
+            'credits_topped_up_30d' => $toppedUp,
+            'daily_burn_rate' => $dailyBurnRate,
+            'estimated_runway_days' => $estimatedRunwayDays,
+            'breakdown_by_reason' => $breakdown,
+        ];
+    }
+
+    /**
+     * Evaluate and dispatch low-balance threshold alert if enabled and breached.
+     */
+    protected function checkAndDispatchLowBalanceAlert(
+        OrganizerCreditWallet $lockedWallet,
+        int $balanceBefore,
+        int $balanceAfter
+    ): void {
+        $alertEnabled = (bool) ($lockedWallet->low_balance_alert_enabled ?? true);
+        if (! $alertEnabled) {
+            return;
+        }
+
+        $threshold = (int) ($lockedWallet->low_balance_threshold ?? 500);
+        if ($balanceAfter > $threshold) {
+            return;
+        }
+
+        $crossedDownward = $balanceBefore > $threshold;
+        $cooldownElapsed = $lockedWallet->last_low_balance_alert_at === null
+            || $lockedWallet->last_low_balance_alert_at->diffInHours(now()) >= 24;
+
+        if (! $crossedDownward && ! $cooldownElapsed) {
+            return;
+        }
+
+        $lockedWallet->update([
+            'last_low_balance_alert_at' => now(),
+        ]);
+
+        try {
+            $organizer = $lockedWallet->relationLoaded('organizer')
+                ? $lockedWallet->organizer
+                : Organizer::find($lockedWallet->organizer_id);
+
+            if ($organizer && $organizer->user_id && class_exists(\Modules\Notification\app\Models\InAppNotification::class)) {
+                \Modules\Notification\app\Models\InAppNotification::create([
+                    'user_id' => $organizer->user_id,
+                    'type' => 'billing.low_balance',
+                    'title' => 'Low Credit Balance Alert',
+                    'message' => "Your {$organizer->name} wallet balance is {$balanceAfter} credits (below your {$threshold} credit alert threshold). Top up to prevent campaign or renewal interruptions.",
+                    'action_url' => '/organizer/credits',
+                    'icon' => 'alert-triangle',
+                    'data' => [
+                        'organizer_id' => $organizer->id,
+                        'organizer_uuid' => $organizer->uuid,
+                        'balance_after' => $balanceAfter,
+                        'threshold' => $threshold,
+                    ],
+                ]);
+            }
+        } catch (\Throwable) {
+            // Never fail the financial ledger transaction if notification dispatch encounters an issue
+        }
     }
 }

@@ -24,69 +24,8 @@ class SendEventUpdatedEmailService
      */
     public function execute(Event $event, Organizer $organizer, User $editor, array $changes = []): void
     {
-        // Option B: Only notify attendees if material details changed (date, time, venue/address, or status)
-        if (! $this->hasMaterialChanges($changes)) {
-            return;
-        }
-
-        $frontendUrl = rtrim(config('app.frontend_url', 'http://localhost:5173'), '/');
-
-        $schedule = $event->relationLoaded('schedule') ? $event->schedule : $event->schedule()->first();
-        $location = $event->relationLoaded('location') ? $event->location : $event->location()->first();
-
-        $startDate = 'TBA';
-        if (! empty($schedule?->start_date)) {
-            try {
-                $time = ! empty($schedule->start_time) ? ' '.$schedule->start_time : '';
-                $startDate = Carbon::parse($schedule->start_date.$time)->format('F j, Y g:i A');
-            } catch (\Throwable) {
-                $startDate = (string) $schedule->start_date;
-            }
-        }
-        $locationName = $location?->name ?? $location?->address ?? ($event->format?->value === 'online' ? 'Online Event' : 'TBA');
-
-        $changeSummary = $this->buildChangeSummary($changes);
-
-        // Notify confirmed ticket holders / attendees of the event update
-        $attendeeTickets = $event->tickets()
-            ->whereIn('status', ['valid', 'Valid'])
-            ->get();
-
-        $notifiedEmails = [];
-
-        foreach ($attendeeTickets as $ticket) {
-            $attendeeEmail = $ticket->attendee_email;
-            if (empty($attendeeEmail) && $ticket->user_id) {
-                $attendeeEmail = $ticket->user?->email;
-            }
-
-            if (empty($attendeeEmail) || in_array(strtolower(trim($attendeeEmail)), $notifiedEmails, true)) {
-                continue;
-            }
-
-            $attendeeName = $ticket->attendee_name ?: ($ticket->user?->name ?: 'Valued Attendee');
-            $cleanEmail = strtolower(trim($attendeeEmail));
-            $notifiedEmails[] = $cleanEmail;
-
-            $attendeePayload = [
-                'name' => $attendeeName,
-                'attendeeName' => $attendeeName,
-                'eventTitle' => $event->title,
-                'organizerName' => $organizer->name,
-                'eventStartDate' => $startDate,
-                'eventLocation' => $locationName,
-                'changeSummary' => $changeSummary,
-                'eventPublicLink' => "{$frontendUrl}/events/{$event->slug}",
-                'ticketViewLink' => "{$frontendUrl}/tickets/{$ticket->uuid}",
-                'siteName' => config('app.name', 'EventsOS'),
-            ];
-
-            try {
-                $this->mailerService->send($cleanEmail, 'event_updated_attendee', $attendeePayload);
-            } catch (\Throwable $e) {
-                logger()->error("Failed sending event_updated_attendee email to [{$cleanEmail}]: ".$e->getMessage());
-            }
-        }
+        // Stopped sending email to attendees when an event is edited.
+        return;
     }
 
     /**

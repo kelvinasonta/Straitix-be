@@ -267,3 +267,69 @@ test('unauthorized users cannot access check-in stats or undo check-in', functio
 
     $responseUndo->assertStatus(403);
 });
+
+test('organizer can broadcast email to event attendees and debit 1 credit per unique recipient', function () {
+    /** @var \Modules\Credits\app\Services\CreditLedgerService $ledger */
+    $ledger = app(\Modules\Credits\app\Services\CreditLedgerService::class);
+    $wallet = $ledger->getOrCreateWallet($this->organizer);
+    $ledger->creditWallet(
+        wallet: $wallet,
+        amount: 10,
+        reason: \Modules\Credits\app\Enums\CreditTxReason::TOPUP,
+        idempotencyKey: 'brc_test_seed',
+        reference: 'REF-BRC-SEED',
+        description: 'Seed credits for broadcast test'
+    );
+
+    // Add a second ticket for same email (should deduplicate) and a third ticket for a new email
+    Ticket::create([
+        'event_id' => $this->event->id,
+        'user_id' => $this->customer->id,
+        'ticket_type_id' => $this->ticketType->id,
+        'ticket_number' => 'TKT-DUP111',
+        'price_paid' => 10000.00,
+        'currency' => 'KES',
+        'attendee_name' => 'Kwame Mensah',
+        'attendee_email' => 'kwame@example.com',
+        'status' => 'valid',
+    ]);
+
+    Ticket::create([
+        'event_id' => $this->event->id,
+        'user_id' => $this->customer->id,
+        'ticket_type_id' => $this->ticketType->id,
+        'ticket_number' => 'TKT-NEW222',
+        'price_paid' => 10000.00,
+        'currency' => 'KES',
+        'attendee_name' => 'Zainab Musa',
+        'attendee_email' => 'zainab@example.com',
+        'status' => 'valid',
+    ]);
+
+    $response = $this->actingAs($this->owner)
+        ->postJson("/api/v1/organizers/{$this->organizer->uuid}/events/{$this->event->uuid}/broadcast-email", [
+            'subject' => 'Gate Opening Update',
+            'message' => 'Doors will open at 4:00 PM prompt. Please bring your QR code.',
+        ]);
+
+    $response->assertStatus(200)
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('data.recipients_count', 2)
+        ->assertJsonPath('data.sent_count', 2)
+        ->assertJsonPath('data.credits_charged', 2)
+        ->assertJsonPath('data.available_balance', 8);
+
+    expect($wallet->fresh()->balance)->toBe(8);
+});
+
+test('broadcast email fails with 422 INSUFFICIENT_CREDITS when wallet has 0 credits', function () {
+    $response = $this->actingAs($this->owner)
+        ->postJson("/api/v1/organizers/{$this->organizer->uuid}/events/{$this->event->uuid}/broadcast-email", [
+            'subject' => 'Gate Opening Update',
+            'message' => 'Doors will open at 4:00 PM prompt.',
+        ]);
+
+    $response->assertStatus(422)
+        ->assertJsonPath('success', false)
+        ->assertJsonPath('code', 'INSUFFICIENT_CREDITS');
+});

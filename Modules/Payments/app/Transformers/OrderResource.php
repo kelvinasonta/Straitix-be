@@ -34,11 +34,13 @@ class OrderResource extends JsonResource
             'paidAt' => $this->paid_at?->toISOString(),
             'createdAt' => $this->created_at?->toISOString(),
             'event' => $this->whenLoaded('event', function () {
+                $location = $this->event->relationLoaded('location') ? $this->event->location : null;
+
                 return [
                     'id' => $this->event->uuid,
                     'title' => $this->event->title,
                     'slug' => $this->event->slug,
-                    'venue' => $this->event->location?->venue_name ?? $this->event->venue_name,
+                    'venue' => $location?->venue_name ?? $location?->name ?? $this->event->venue_name,
                 ];
             }),
             'items' => OrderItemResource::collection($this->whenLoaded('items')),

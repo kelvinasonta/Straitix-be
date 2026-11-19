@@ -19,12 +19,12 @@ class DiscoverEventResource extends JsonResource
     {
         $dto = $this->resource;
         $event = $dto->event;
-        $location = $event->location;
-        $schedule = $event->schedule;
-        $organizer = $event->organizer;
+        $location = $event->relationLoaded('location') ? $event->location : null;
+        $schedule = $event->relationLoaded('schedule') ? $event->schedule : null;
+        $organizer = $event->relationLoaded('organizer') ? $event->organizer : null;
 
         // Calculate pricing summary
-        $ticketTypes = $event->ticketTypes;
+        $ticketTypes = $event->relationLoaded('ticketTypes') ? $event->ticketTypes : collect();
         $minPrice = $ticketTypes->isNotEmpty() ? $ticketTypes->min('price') : 0;
         $maxPrice = $ticketTypes->isNotEmpty() ? $ticketTypes->max('price') : 0;
         $isFree = $minPrice === 0;

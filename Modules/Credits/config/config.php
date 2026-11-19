@@ -23,6 +23,44 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Credit Top-Up Packages
+    |--------------------------------------------------------------------------
+    */
+    'packages' => [
+        [
+            'id' => 'starter',
+            'name' => 'Starter Pack',
+            'credits' => 100,
+            'price_kobo' => 100000,
+            'currency' => 'NGN',
+            'discount_label' => null,
+            'is_popular' => false,
+            'is_active' => true,
+        ],
+        [
+            'id' => 'growth',
+            'name' => 'Growth Pack',
+            'credits' => 500,
+            'price_kobo' => 450000,
+            'currency' => 'NGN',
+            'discount_label' => 'Save 10%',
+            'is_popular' => true,
+            'is_active' => true,
+        ],
+        [
+            'id' => 'power',
+            'name' => 'Pro Accelerator',
+            'credits' => 1500,
+            'price_kobo' => 1200000,
+            'currency' => 'NGN',
+            'discount_label' => 'Save 20%',
+            'is_popular' => false,
+            'is_active' => true,
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Gateway Specific Configurations
     |--------------------------------------------------------------------------
     */

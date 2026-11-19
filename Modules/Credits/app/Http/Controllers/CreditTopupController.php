@@ -23,7 +23,7 @@ class CreditTopupController extends Controller
     ) {}
 
     /**
-     * Get available payment gateways for credit top-up.
+     * Get available payment gateways and active packages for credit top-up.
      */
     public function gateways(): JsonResponse
     {
@@ -31,7 +31,19 @@ class CreditTopupController extends Controller
             'default_gateway' => $this->gatewayManager->getDefaultDriverName(),
             'gateways' => $this->gatewayManager->getAvailableDrivers(),
             'rate_per_credit_kobo' => (int) (config('credits.rate_per_credit_kobo') ?: 1000),
+            'packages' => $this->topupService->getActivePackages(),
         ]);
+    }
+
+    /**
+     * Get active credit top-up packages.
+     */
+    public function packages(): JsonResponse
+    {
+        return ApiResponse::success(
+            'Credit packages retrieved successfully.',
+            $this->topupService->getActivePackages()
+        );
     }
 
     /**
@@ -40,7 +52,8 @@ class CreditTopupController extends Controller
     public function initialize(Request $request, string $organizerUuid): JsonResponse
     {
         $validated = $request->validate([
-            'credits' => 'required|integer|min:10|max:1000000',
+            'package_id' => 'nullable|string',
+            'credits' => 'required_without:package_id|nullable|integer|min:10|max:1000000',
             'callback_url' => 'nullable|url',
             'gateway' => 'nullable|string',
         ]);
@@ -55,7 +68,7 @@ class CreditTopupController extends Controller
         try {
             $checkout = $this->topupService->initializeTopup(
                 wallet: $wallet,
-                credits: (int) $validated['credits'],
+                credits: (int) ($validated['credits'] ?? 0),
                 callbackUrl: $callbackUrl,
                 customerEmail: $customerEmail,
                 gatewayName: $validated['gateway'] ?? null,
@@ -63,7 +76,8 @@ class CreditTopupController extends Controller
                     'organizer_id' => $organizer->id,
                     'organizer_uuid' => $organizer->uuid,
                     'user_id' => $request->user()?->id,
-                ]
+                ],
+                packageId: $validated['package_id'] ?? null
             );
 
             return ApiResponse::success('Payment checkout initialized successfully.', $checkout->toArray());

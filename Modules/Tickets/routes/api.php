@@ -38,5 +38,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         });
 
         Route::get('attendees/export', [AttendeeController::class, 'export'])->middleware('organizer.role:org.attendees.manage');
+        Route::post('broadcast-email', [AttendeeController::class, 'broadcastEmail'])->middleware('organizer.role:org.attendees.manage');
     });
 });

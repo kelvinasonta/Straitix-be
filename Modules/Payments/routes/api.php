@@ -16,6 +16,7 @@ Route::prefix('v1')->group(function () {
     Route::get('orders/{orderUuid}', [OrderController::class, 'show']);
     Route::post('orders/{orderUuid}/cancel', [OrderController::class, 'cancel']);
     Route::post('orders/{orderUuid}/payments', [CheckoutPaymentController::class, 'initialize']);
+    Route::post('orders/broadcasting/auth', [CheckoutPaymentController::class, 'broadcastAuth']);
     Route::get('payments/verify/{reference}', [CheckoutPaymentController::class, 'verify']);
 
     // Authenticated Endpoints
@@ -25,11 +26,18 @@ Route::prefix('v1')->group(function () {
     });
 
     // Organizer Scoped Order & Payout Management
-    Route::middleware(['auth:sanctum', 'organizer.role:org.finance.view'])->prefix('organizers/{organizerUuid}')->group(function () {
-        Route::get('orders', [OrderController::class, 'organizerOrders']);
-        Route::get('orders/export', [OrderController::class, 'exportOrganizerOrders']);
-        Route::get('events/{eventUuid}/orders', [OrderController::class, 'organizerOrders']);
-        Route::get('events/{eventUuid}/orders/export', [OrderController::class, 'exportOrganizerOrders']);
-        Route::get('payouts', [PayoutController::class, 'index']);
+    Route::middleware(['auth:sanctum'])->prefix('organizers/{organizerUuid}')->group(function () {
+        Route::middleware('organizer.role:org.finance.view')->group(function () {
+            Route::get('orders', [OrderController::class, 'organizerOrders']);
+            Route::get('orders/export', [OrderController::class, 'exportOrganizerOrders']);
+            Route::get('events/{eventUuid}/orders', [OrderController::class, 'organizerOrders']);
+            Route::get('events/{eventUuid}/orders/export', [OrderController::class, 'exportOrganizerOrders']);
+            Route::get('payouts', [PayoutController::class, 'index']);
+            Route::post('orders/{orderUuid}/resend-receipt', [OrderController::class, 'resendReceipt']);
+        });
+
+        Route::middleware('organizer.role:org.finance.manage')->group(function () {
+            Route::post('orders/{orderUuid}/refund', [OrderController::class, 'refund']);
+        });
     });
 });

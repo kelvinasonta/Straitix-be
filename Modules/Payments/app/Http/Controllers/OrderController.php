@@ -193,4 +193,55 @@ class OrderController extends Controller
             'Content-Type' => 'text/csv',
         ]);
     }
+
+    /**
+     * Refund an organizer's order.
+     */
+    public function refund(Request $request, string $organizerUuid, string $orderUuid): JsonResponse
+    {
+        $organizer = $request->attributes->get('active_organizer')
+            ?? Organizer::where('uuid', $organizerUuid)
+                ->orWhere('slug', $organizerUuid)
+                ->when(is_numeric($organizerUuid), fn ($q) => $q->orWhere('id', (int) $organizerUuid))
+                ->firstOrFail();
+
+        $validated = $request->validate([
+            'reason' => 'nullable|string|max:500',
+            'amount' => 'nullable|numeric|min:0',
+        ]);
+
+        try {
+            $refundedOrder = $this->orderService->refundOrder($organizer, $orderUuid, $validated);
+
+            return ApiResponse::success(
+                'Order refunded successfully.',
+                new OrderResource($refundedOrder)
+            );
+        } catch (OrderException $e) {
+            return ApiResponse::error($e->getMessage(), 422);
+        }
+    }
+
+    /**
+     * Resend purchase receipt and ticket pass to the customer.
+     */
+    public function resendReceipt(Request $request, string $organizerUuid, string $orderUuid): JsonResponse
+    {
+        $organizer = $request->attributes->get('active_organizer')
+            ?? Organizer::where('uuid', $organizerUuid)
+                ->orWhere('slug', $organizerUuid)
+                ->when(is_numeric($organizerUuid), fn ($q) => $q->orWhere('id', (int) $organizerUuid))
+                ->firstOrFail();
+
+        try {
+            $this->orderService->resendOrderReceipt($organizer, $orderUuid);
+
+            return ApiResponse::success(
+                'Purchase receipt and ticket pass re-sent successfully.',
+                null
+            );
+        } catch (OrderException $e) {
+            return ApiResponse::error($e->getMessage(), 422);
+        }
+    }
 }

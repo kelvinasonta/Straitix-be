@@ -11,16 +11,19 @@ class EventResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
-        $startDate = $this->schedule?->start_date;
-        $endDate = $this->schedule?->end_date;
-        $recurringEndDate = $this->schedule?->recurring_end_date;
+        $schedule = $this->relationLoaded('schedule') ? $this->schedule : null;
+        $location = $this->relationLoaded('location') ? $this->location : null;
+
+        $startDate = $schedule?->start_date;
+        $endDate = $schedule?->end_date;
+        $recurringEndDate = $schedule?->recurring_end_date;
 
         $startDateStr = $startDate instanceof \DateTimeInterface ? $startDate->format('Y-m-d') : ($startDate ? (string) $startDate : null);
         $endDateStr = $endDate instanceof \DateTimeInterface ? $endDate->format('Y-m-d') : ($endDate ? (string) $endDate : null);
         $recurringEndDateStr = $recurringEndDate instanceof \DateTimeInterface ? $recurringEndDate->format('Y-m-d') : ($recurringEndDate ? (string) $recurringEndDate : null);
 
-        $startTimeStr = $this->schedule?->start_time;
-        $endTimeStr = $this->schedule?->end_time;
+        $startTimeStr = $schedule?->start_time;
+        $endTimeStr = $schedule?->end_time;
         if ($startTimeStr && strlen((string) $startTimeStr) > 5) {
             $startTimeStr = substr((string) $startTimeStr, 0, 5);
         }
@@ -94,37 +97,37 @@ class EventResource extends JsonResource
             'eventType' => $this->event_type?->value ?? $this->event_type,
             'eventFormat' => $this->event_format,
             'eventCategory' => $this->event_category ?? [],
-            'venueName' => $this->location?->venue_name,
-            'city' => $this->location?->city,
-            'state' => $this->location?->state,
+            'venueName' => $location?->venue_name,
+            'city' => $location?->city,
+            'state' => $location?->state,
             'startDate' => $startDateStr,
             'startTime' => $startTimeStr,
             'endDate' => $endDateStr,
             'endTime' => $endTimeStr,
             'location' => [
                 'eventLocationId' => $this->event_location_id,
-                'venueName' => $this->location?->venue_name,
-                'venueAddress' => $this->location?->venue_address,
-                'streetAddress' => $this->location?->street_address,
-                'city' => $this->location?->city,
-                'state' => $this->location?->state,
-                'zip' => $this->location?->zip,
-                'landmark' => $this->location?->landmark,
-                'longitude' => $this->location?->longitude,
-                'latitude' => $this->location?->latitude,
-                'onlineMeetingUrl' => $this->location?->online_meeting_url,
+                'venueName' => $location?->venue_name,
+                'venueAddress' => $location?->venue_address,
+                'streetAddress' => $location?->street_address,
+                'city' => $location?->city,
+                'state' => $location?->state,
+                'zip' => $location?->zip,
+                'landmark' => $location?->landmark,
+                'longitude' => $location?->longitude,
+                'latitude' => $location?->latitude,
+                'onlineMeetingUrl' => $location?->online_meeting_url,
             ],
             'schedule' => [
-                'type' => $this->schedule?->schedule_type ?? 'single',
-                'timezone' => $this->schedule?->schedule_timezone ?? 'UTC',
-                'eventFrequency' => $this->schedule?->event_frequency,
+                'type' => $schedule?->schedule_type ?? 'single',
+                'timezone' => $schedule?->schedule_timezone ?? 'UTC',
+                'eventFrequency' => $schedule?->event_frequency,
                 'startDate' => $startDateStr,
                 'startTime' => $startTimeStr,
                 'endDate' => $endDateStr,
                 'endTime' => $endTimeStr,
-                'recurringEndType' => $this->schedule?->recurring_type,
+                'recurringEndType' => $schedule?->recurring_type,
                 'recurringEndDate' => $recurringEndDateStr,
-                'recurringOccurrences' => $this->schedule?->recurring_occurrences,
+                'recurringOccurrences' => $schedule?->recurring_occurrences,
             ],
             'schedules' => $schedulesData,
             'scheduleItems' => $schedulesData,

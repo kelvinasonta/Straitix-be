@@ -51,6 +51,32 @@ class CreditWalletController extends Controller
     }
 
     /**
+     * Update low-balance threshold and alert configuration for the organizer's wallet.
+     * PUT /api/v1/organizers/{organizerUuid}/credits/wallet/settings
+     */
+    public function updateSettings(Request $request, string $organizerUuid): JsonResponse
+    {
+        $validated = $request->validate([
+            'low_balance_threshold' => ['required', 'integer', 'min:0', 'max:1000000'],
+            'low_balance_alert_enabled' => ['required', 'boolean'],
+        ]);
+
+        $organizer = $this->resolveOrganizer($request, $organizerUuid);
+        $wallet = $this->creditLedgerService->getOrCreateWallet($organizer);
+
+        $updated = $this->creditLedgerService->updateWalletSettings(
+            wallet: $wallet,
+            lowBalanceThreshold: (int) $validated['low_balance_threshold'],
+            lowBalanceAlertEnabled: (bool) $validated['low_balance_alert_enabled']
+        );
+
+        return ApiResponse::success(
+            'Credit wallet alert settings updated successfully.',
+            new CreditWalletResource($updated)
+        );
+    }
+
+    /**
      * Get paginated ledger history for the organizer's wallet with filtering.
      * GET /api/v1/organizers/{organizerUuid}/credits/ledger
      */
@@ -66,10 +92,18 @@ class CreditWalletController extends Controller
         }
 
         if ($request->filled('type')) {
-            $query->where('type', $request->query('type'));
+            $query->where('type', strtoupper((string) $request->query('type')));
         }
 
-        $perPage = min(max((int) $request->query('per_page', 15), 1), 100);
+        if ($request->filled('search')) {
+            $search = '%'.trim((string) $request->query('search')).'%';
+            $query->where(function ($q) use ($search): void {
+                $q->where('reference', 'like', $search)
+                    ->orWhere('description', 'like', $search);
+            });
+        }
+
+        $perPage = min(max((int) ($request->query('per_page') ?? $request->query('limit') ?? 15), 1), 100);
         $paginator = $query->paginate($perPage);
 
         return ApiResponse::success(

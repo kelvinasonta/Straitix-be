@@ -6,6 +6,7 @@ namespace Modules\Credits\app\Services;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use InvalidArgumentException;
 use Modules\Credits\app\DTOs\GatewayCheckoutDTO;
 use Modules\Credits\app\Enums\CreditTxReason;
 use Modules\Credits\app\Models\CreditTopupTransaction;
@@ -20,6 +21,85 @@ class CreditTopupService
     ) {}
 
     /**
+     * Retrieve all active credit top-up packages.
+     *
+     * @return array<int, array{id: string, name: string, credits: int, price_kobo: int, currency: string, discount_label: string|null, is_popular: bool}>
+     */
+    public function getActivePackages(): array
+    {
+        $configured = config('credits.packages');
+        if (! is_array($configured) || empty($configured)) {
+            $configured = [
+                [
+                    'id' => 'starter',
+                    'name' => 'Starter Pack',
+                    'credits' => 100,
+                    'price_kobo' => 100000,
+                    'currency' => 'NGN',
+                    'discount_label' => null,
+                    'is_popular' => false,
+                    'is_active' => true,
+                ],
+                [
+                    'id' => 'growth',
+                    'name' => 'Growth Pack',
+                    'credits' => 500,
+                    'price_kobo' => 450000,
+                    'currency' => 'NGN',
+                    'discount_label' => 'Save 10%',
+                    'is_popular' => true,
+                    'is_active' => true,
+                ],
+                [
+                    'id' => 'power',
+                    'name' => 'Pro Accelerator',
+                    'credits' => 1500,
+                    'price_kobo' => 1200000,
+                    'currency' => 'NGN',
+                    'discount_label' => 'Save 20%',
+                    'is_popular' => false,
+                    'is_active' => true,
+                ],
+            ];
+        }
+
+        $active = [];
+        foreach ($configured as $pkg) {
+            if (($pkg['is_active'] ?? true) === false) {
+                continue;
+            }
+            $active[] = [
+                'id' => (string) $pkg['id'],
+                'name' => (string) $pkg['name'],
+                'credits' => (int) $pkg['credits'],
+                'price_kobo' => (int) $pkg['price_kobo'],
+                'currency' => (string) ($pkg['currency'] ?? 'NGN'),
+                'discount_label' => $pkg['discount_label'] ?? null,
+                'is_popular' => (bool) ($pkg['is_popular'] ?? false),
+            ];
+        }
+
+        return $active;
+    }
+
+    /**
+     * Find an active credit package by its ID.
+     *
+     * @return array{id: string, name: string, credits: int, price_kobo: int, currency: string, discount_label: string|null, is_popular: bool}|null
+     */
+    public function findActivePackage(string $packageId): ?array
+    {
+        $normalized = strtolower(trim($packageId));
+        foreach ($this->getActivePackages() as $pkg) {
+            if (strtolower($pkg['id']) === $normalized) {
+                return $pkg;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Initialize a credit top-up checkout session using the resolved gateway.
      *
      * @param  array<string, mixed>  $metadata
@@ -30,11 +110,27 @@ class CreditTopupService
         string $callbackUrl,
         string $customerEmail,
         ?string $gatewayName = null,
-        array $metadata = []
+        array $metadata = [],
+        ?string $packageId = null
     ): GatewayCheckoutDTO {
         $gateway = $this->gatewayManager->driver($gatewayName);
-        $ratePerCreditKobo = (int) (config('credits.rate_per_credit_kobo') ?: 1000);
-        $amountKobo = $credits * $ratePerCreditKobo;
+
+        if ($packageId !== null && trim($packageId) !== '') {
+            $package = $this->findActivePackage($packageId);
+            if (! $package) {
+                throw new InvalidArgumentException("Invalid or inactive credit package '{$packageId}'.");
+            }
+            $credits = $package['credits'];
+            $amountKobo = $package['price_kobo'];
+            $metadata['package_id'] = $package['id'];
+            $metadata['package_name'] = $package['name'];
+        } else {
+            if ($credits < 10) {
+                throw new InvalidArgumentException('Credit amount must be at least 10.');
+            }
+            $ratePerCreditKobo = (int) (config('credits.rate_per_credit_kobo') ?: 1000);
+            $amountKobo = $credits * $ratePerCreditKobo;
+        }
 
         $checkout = $gateway->initializeCheckout(
             wallet: $wallet,
@@ -149,27 +245,34 @@ class CreditTopupService
                 ];
             }
 
+            $authoritativeCredits = $topupTx->credits_awarded > 0
+                ? (int) $topupTx->credits_awarded
+                : $eventDto->creditsAwarded;
+            $authoritativeAmountKobo = $topupTx->amount_kobo > 0
+                ? (int) $topupTx->amount_kobo
+                : $eventDto->amountKobo;
+
             // Credit the Wallet
             $idempotencyKey = "topup_{$eventDto->gateway}_{$eventDto->providerReference}";
             $ledgerEntry = $this->ledgerService->creditWallet(
                 wallet: $wallet,
-                amount: $eventDto->creditsAwarded,
+                amount: $authoritativeCredits,
                 reason: CreditTxReason::TOPUP,
                 idempotencyKey: $idempotencyKey,
                 reference: $eventDto->providerReference,
-                description: "Credit top-up via {$eventDto->gateway} ({$eventDto->creditsAwarded} credits)",
+                description: "Credit top-up via {$eventDto->gateway} ({$authoritativeCredits} credits)",
                 metadata: [
                     'gateway' => $eventDto->gateway,
                     'provider_ref' => $eventDto->providerReference,
-                    'amount_kobo' => $eventDto->amountKobo,
+                    'amount_kobo' => $authoritativeAmountKobo,
                 ]
             );
 
             // Mark transaction as SUCCESS
             $topupTx->update([
                 'status' => 'SUCCESS',
-                'amount_kobo' => $eventDto->amountKobo > 0 ? $eventDto->amountKobo : $topupTx->amount_kobo,
-                'credits_awarded' => $eventDto->creditsAwarded > 0 ? $eventDto->creditsAwarded : $topupTx->credits_awarded,
+                'amount_kobo' => $authoritativeAmountKobo,
+                'credits_awarded' => $authoritativeCredits,
                 'metadata' => array_merge($topupTx->metadata ?? [], [
                     'ledger_uuid' => $ledgerEntry->uuid,
                     'processed_at' => now()->toIso8601String(),
@@ -178,7 +281,7 @@ class CreditTopupService
 
             return [
                 'status' => 'success',
-                'credits_awarded' => $eventDto->creditsAwarded,
+                'credits_awarded' => $authoritativeCredits,
                 'new_balance' => $wallet->fresh()->balance,
                 'reference' => $eventDto->providerReference,
             ];
@@ -224,8 +327,12 @@ class CreditTopupService
             ];
         }
 
-        $creditsAwarded = (int) ($verification['credits_awarded'] ?? 0);
-        $amountKobo = (int) ($verification['amount_kobo'] ?? 0);
+        $creditsAwarded = ($topupTx && $topupTx->credits_awarded > 0)
+            ? (int) $topupTx->credits_awarded
+            : (int) ($verification['credits_awarded'] ?? 0);
+        $amountKobo = ($topupTx && $topupTx->amount_kobo > 0)
+            ? (int) $topupTx->amount_kobo
+            : (int) ($verification['amount_kobo'] ?? 0);
 
         return DB::transaction(function () use ($wallet, $topupTx, $resolvedGateway, $reference, $creditsAwarded, $amountKobo, $verification) {
             $lockedWallet = OrganizerCreditWallet::where('id', $wallet->id)->lockForUpdate()->firstOrFail();

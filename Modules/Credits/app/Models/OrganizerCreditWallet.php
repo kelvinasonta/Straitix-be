@@ -21,6 +21,9 @@ class OrganizerCreditWallet extends Model
         'organizer_id',
         'balance',
         'reserved_balance',
+        'low_balance_threshold',
+        'low_balance_alert_enabled',
+        'last_low_balance_alert_at',
         'currency',
         'version',
     ];
@@ -31,6 +34,9 @@ class OrganizerCreditWallet extends Model
     protected $casts = [
         'balance' => 'integer',
         'reserved_balance' => 'integer',
+        'low_balance_threshold' => 'integer',
+        'low_balance_alert_enabled' => 'boolean',
+        'last_low_balance_alert_at' => 'datetime',
         'version' => 'integer',
     ];
 
